@@ -1,0 +1,19 @@
+model:
+  embedding_dim: 512
+  num_attributes: 5
+  hidden_dim: 256
+
+training:
+  num_epochs: 50
+  batch_size: 128
+  learning_rate: 1e-4
+  alpha: 0.1  # Flow step size
+
+loss:
+  temperature: 0.07
+  lambda_curl: 0.01
+  lambda_div: 0.01
+
+inference:
+  num_flow_steps: 10
+  step_size: 0.1

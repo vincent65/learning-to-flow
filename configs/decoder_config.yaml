@@ -1,0 +1,15 @@
+model:
+  embedding_dim: 512
+  img_size: 128
+  hidden_dims: [512, 256, 128, 64, 32]
+
+training:
+  num_epochs: 20
+  batch_size: 64
+  learning_rate: 1e-4
+  weight_decay: 1e-5
+
+data:
+  train_size: 162000
+  val_size: 20000
+  num_workers: 4

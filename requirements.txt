@@ -1,0 +1,23 @@
+# Core Libraries
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0,<2.0  # Pin to 1.x for PyTorch compatibility
+pillow>=9.0.0
+
+# CLIP
+git+https://github.com/openai/CLIP.git
+
+# Training & Logging
+tensorboard>=2.12.0
+wandb>=0.15.0
+tqdm>=4.65.0
+pyyaml>=6.0
+
+# Evaluation & Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+scikit-learn>=1.2.0
+umap-learn>=0.5.3
+
+# Demo (Optional)
+gradio>=3.40.0

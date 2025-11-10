@@ -1,0 +1,110 @@
+FCLF Project Structure
+======================
+
+learning-to-flow/
+│
+├── 📄 README.md                    ← Main documentation
+├── 📄 GETTING_STARTED.md           ← Quick start guide
+├── 📄 PROJECT_SUMMARY.md           ← Implementation summary
+├── 📄 PRD.md                       ← Product requirements
+├── 📄 requirements.txt             ← Python dependencies
+├── 📄 setup.py                     ← Package setup
+├── 📄 .gitignore                   ← Git ignore rules
+│
+├── 📁 configs/
+│   ├── decoder_config.yaml         ← Decoder hyperparameters
+│   └── fclf_config.yaml            ← FCLF hyperparameters
+│
+├── 📁 data/
+│   ├── celeba/                     ← CelebA dataset (download)
+│   │   ├── img_align_celeba/       ← 202,599 face images
+│   │   └── list_attr_celeba.txt    ← Attribute labels
+│   └── embeddings/                 ← Cached CLIP embeddings
+│       ├── train_embeddings.pt
+│       ├── val_embeddings.pt
+│       └── test_embeddings.pt
+│
+├── 📁 src/
+│   ├── __init__.py
+│   │
+│   ├── 📁 data/
+│   │   ├── __init__.py
+│   │   ├── celeba_dataset.py       ← Dataset loader
+│   │   ├── embedding_cache.py      ← CLIP embedding cache
+│   │   └── data_utils.py           ← Preprocessing utilities
+│   │
+│   ├── 📁 models/
+│   │   ├── __init__.py
+│   │   ├── vector_field.py         ← Vector field network
+│   │   └── clip_decoder.py         ← CLIP decoder (+ VAE)
+│   │
+│   ├── 📁 losses/
+│   │   ├── __init__.py
+│   │   ├── contrastive_flow_loss.py ← InfoNCE loss
+│   │   ├── regularization.py       ← Curl/divergence
+│   │   └── combined_loss.py        ← Total loss
+│   │
+│   ├── 📁 training/
+│   │   ├── __init__.py
+│   │   ├── train_decoder.py        ← Decoder training
+│   │   └── train_fclf.py           ← FCLF training
+│   │
+│   ├── 📁 evaluation/
+│   │   ├── __init__.py
+│   │   ├── metrics.py              ← Evaluation metrics
+│   │   └── visualize.py            ← Visualization tools
+│   │
+│   └── 📁 inference/
+│       ├── __init__.py
+│       └── inference.py            ← Inference pipeline
+│
+├── 📁 scripts/
+│   ├── download_data.sh            ← Data download guide
+│   ├── precompute_embeddings.py    ← Embedding cache script
+│   ├── train_decoder.sh            ← Decoder training script
+│   ├── train_fclf.sh               ← FCLF training script
+│   └── run_evaluation.py           ← Evaluation script
+│
+├── 📁 notebooks/                   ← Jupyter notebooks (TBD)
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_decoder_analysis.ipynb
+│   ├── 03_fclf_results.ipynb
+│   └── 04_ablation_studies.ipynb
+│
+├── 📁 checkpoints/                 ← Model checkpoints
+│   ├── decoder_best.pt
+│   └── fclf_best.pt
+│
+└── 📁 results/                     ← Evaluation results
+    ├── figures/
+    ├── metrics/
+    └── generated_images/
+
+Key Components:
+───────────────
+
+1. Data Pipeline
+   └─ CelebADataset → CLIP Encoder → Cached Embeddings
+
+2. Decoder
+   └─ CLIP Embedding (512) → Transposed CNN → Image (128×128)
+
+3. Vector Field
+   └─ (Embedding, Attributes) → MLP → Velocity Vector
+
+4. Training
+   └─ Contrastive Loss + Regularization → Optimized Flow
+
+5. Evaluation
+   └─ Metrics (Silhouette, Purity) + Visualizations (UMAP)
+
+6. Inference
+   └─ Image → Flow → Decode → Transformed Image
+
+Workflow:
+─────────
+
+Setup      → Download → Precompute → Train Decoder → Train FCLF → Evaluate
+(5 min)      (30 min)    (20 min)      (2-3 hrs)       (4-6 hrs)    (10 min)
+
+Total Time: ~7-10 hours

@@ -1,0 +1,244 @@
+"""
+Contrastive Flow Loss (InfoNCE-style) for FCLF.
+
+The key idea: embeddings flowed toward the same target attributes should be similar,
+while embeddings with different target attributes should be dissimilar.
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class ContrastiveFlowLoss(nn.Module):
+    """
+    InfoNCE-style contrastive loss on flowed embeddings.
+
+    For each embedding, positive samples are those with the same target attributes,
+    and negative samples are those with different target attributes.
+    """
+
+    def __init__(self, temperature: float = 0.07):
+        """
+        Args:
+            temperature: Temperature parameter for softmax
+        """
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(
+        self,
+        z_flowed: torch.Tensor,
+        attributes: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Compute contrastive loss on flowed embeddings.
+
+        Args:
+            z_flowed: [batch, embedding_dim] flowed embeddings
+            attributes: [batch, num_attributes] target attribute vectors
+
+        Returns:
+            loss: scalar contrastive loss
+        """
+        batch_size = z_flowed.size(0)
+
+        # Normalize embeddings for cosine similarity
+        z_norm = F.normalize(z_flowed, dim=1)
+
+        # Compute similarity matrix: [batch, batch]
+        similarity = torch.matmul(z_norm, z_norm.t()) / self.temperature
+
+        # Create mask for positive pairs (same attributes)
+        # Two samples are positive if they have identical attribute vectors
+        attr_similarity = torch.matmul(attributes, attributes.t())
+        num_attrs = attributes.size(1)
+
+        # Positive mask: all attributes match
+        positive_mask = (attr_similarity == num_attrs).float()
+
+        # Remove self-similarity
+        positive_mask.fill_diagonal_(0)
+
+        # Negative mask: at least one attribute differs
+        negative_mask = (attr_similarity < num_attrs).float()
+
+        # Check if we have valid positive pairs
+        num_positives = positive_mask.sum(dim=1)
+
+        if num_positives.sum() == 0:
+            # No positive pairs, return zero loss
+            return torch.tensor(0.0, device=z_flowed.device, requires_grad=True)
+
+        # Compute InfoNCE loss
+        # For each anchor, maximize similarity to positives, minimize to negatives
+        losses = []
+
+        for i in range(batch_size):
+            if num_positives[i] == 0:
+                continue
+
+            # Similarities for this anchor
+            pos_sims = similarity[i] * positive_mask[i]
+            neg_sims = similarity[i] * negative_mask[i]
+
+            # Log-sum-exp for numerator (positives)
+            pos_exp = torch.exp(pos_sims)
+            pos_sum = pos_exp.sum()
+
+            # Log-sum-exp for denominator (all except self)
+            all_exp = torch.exp(similarity[i])
+            all_sum = all_exp.sum() - all_exp[i]  # Exclude self
+
+            # Loss for this anchor
+            if all_sum > 0 and pos_sum > 0:
+                loss_i = -torch.log(pos_sum / all_sum)
+                losses.append(loss_i)
+
+        if len(losses) == 0:
+            return torch.tensor(0.0, device=z_flowed.device, requires_grad=True)
+
+        # Average over valid anchors
+        loss = torch.stack(losses).mean()
+
+        return loss
+
+
+class AttributeContrastiveLoss(nn.Module):
+    """
+    Alternative contrastive loss that considers partial attribute matching.
+
+    Weights positive/negative pairs based on number of matching attributes.
+    """
+
+    def __init__(self, temperature: float = 0.07):
+        """
+        Args:
+            temperature: Temperature parameter
+        """
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(
+        self,
+        z_flowed: torch.Tensor,
+        attributes: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Compute weighted contrastive loss.
+
+        Args:
+            z_flowed: [batch, embedding_dim] flowed embeddings
+            attributes: [batch, num_attributes] attribute vectors
+
+        Returns:
+            loss: scalar contrastive loss
+        """
+        batch_size = z_flowed.size(0)
+        num_attrs = attributes.size(1)
+
+        # Normalize embeddings
+        z_norm = F.normalize(z_flowed, dim=1)
+
+        # Compute similarity matrix
+        similarity = torch.matmul(z_norm, z_norm.t()) / self.temperature
+
+        # Compute attribute similarity (number of matching attributes)
+        attr_similarity = torch.matmul(attributes, attributes.t())  # [batch, batch]
+
+        # Normalize to [0, 1]
+        attr_weights = attr_similarity / num_attrs
+
+        # Remove self-similarity
+        mask = torch.eye(batch_size, device=z_flowed.device).bool()
+        attr_weights.masked_fill_(mask, 0)
+
+        # Compute weighted loss
+        # High attr_weight -> should have high similarity
+        # Low attr_weight -> should have low similarity
+        target_similarity = attr_weights
+
+        # MSE between similarity and target
+        loss = F.mse_loss(
+            torch.sigmoid(similarity * ~mask),
+            target_similarity,
+            reduction='mean'
+        )
+
+        return loss
+
+
+class SimpleContrastiveLoss(nn.Module):
+    """
+    Simplified contrastive loss using one-step flow.
+
+    L_FCLF = -log(exp(sim(z̃, z_pos)) / Σ exp(sim(z̃, z_neg)))
+
+    where z̃ = z + α·v(z, y)
+    """
+
+    def __init__(self, temperature: float = 0.07, alpha: float = 0.1):
+        """
+        Args:
+            temperature: Temperature for softmax
+            alpha: Flow step size
+        """
+        super().__init__()
+        self.temperature = temperature
+        self.alpha = alpha
+
+    def forward(
+        self,
+        z_original: torch.Tensor,
+        z_flowed: torch.Tensor,
+        attributes: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Compute contrastive loss.
+
+        Args:
+            z_original: [batch, dim] original embeddings
+            z_flowed: [batch, dim] flowed embeddings (z + α·v)
+            attributes: [batch, num_attrs] target attributes
+
+        Returns:
+            loss: scalar
+        """
+        # Normalize
+        z_flowed_norm = F.normalize(z_flowed, dim=1)
+
+        # Compute pairwise similarities
+        sim_matrix = torch.matmul(z_flowed_norm, z_flowed_norm.t()) / self.temperature
+
+        # Create labels: same attributes = positive
+        attr_sim = torch.matmul(attributes, attributes.t())
+        num_attrs = attributes.size(1)
+        labels = (attr_sim == num_attrs).long()
+
+        # Remove diagonal
+        labels.fill_diagonal_(0)
+
+        # Compute cross-entropy style loss
+        loss = 0
+        count = 0
+
+        for i in range(z_flowed.size(0)):
+            pos_mask = labels[i].bool()
+            if pos_mask.sum() == 0:
+                continue
+
+            # Positive and negative similarities
+            pos_sim = sim_matrix[i][pos_mask]
+            neg_mask = ~pos_mask
+            neg_mask[i] = False  # Exclude self
+            neg_sim = sim_matrix[i][neg_mask]
+
+            # InfoNCE
+            pos_exp = torch.exp(pos_sim).sum()
+            all_exp = torch.exp(torch.cat([pos_sim, neg_sim])).sum()
+
+            if all_exp > 0:
+                loss += -torch.log(pos_exp / all_exp)
+                count += 1
+
+        return loss / count if count > 0 else torch.tensor(0.0, device=z_flowed.device)
