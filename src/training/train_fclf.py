@@ -51,6 +51,7 @@ def train_fclf(
     config['loss']['temperature'] = float(config['loss']['temperature'])
     config['loss']['lambda_curl'] = float(config['loss']['lambda_curl'])
     config['loss']['lambda_div'] = float(config['loss']['lambda_div'])
+    config['loss']['lambda_identity'] = float(config['loss']['lambda_identity'])
 
     # Device
     if device is None:
@@ -105,7 +106,8 @@ def train_fclf(
             temperature=config['loss']['temperature'],
             alpha=config['training']['alpha'],
             lambda_curl=config['loss']['lambda_curl'],
-            lambda_div=config['loss']['lambda_div']
+            lambda_div=config['loss']['lambda_div'],
+            lambda_identity=config['loss']['lambda_identity']
         )
     else:
         criterion = FCLFLossSimple(
@@ -207,6 +209,7 @@ def train_epoch(model, dataloader, criterion, optimizer, device,
     total_contrastive = 0
     total_curl = 0
     total_div = 0
+    total_identity = 0
 
     pbar = tqdm(dataloader, desc="Training")
 
@@ -214,17 +217,29 @@ def train_epoch(model, dataloader, criterion, optimizer, device,
         embeddings = batch['embedding'].to(device)
         attributes = batch['attributes'].to(device)
 
+        # ATTRIBUTE AUGMENTATION: Flip some attributes to teach transfer
+        # 50% of the time, flip 1-2 random attributes
+        target_attributes = attributes.clone()
+        if torch.rand(1).item() > 0.5:
+            batch_size = attributes.size(0)
+            for i in range(batch_size):
+                num_flips = torch.randint(1, 3, (1,)).item()  # Flip 1 or 2 attributes
+                attrs_to_flip = torch.randperm(5)[:num_flips]
+                for attr_idx in attrs_to_flip:
+                    target_attributes[i, attr_idx] = 1 - target_attributes[i, attr_idx]
+
         optimizer.zero_grad()
 
         if use_regularization:
-            loss, contrastive, curl, div = criterion(
-                model, embeddings, attributes, return_components=True
+            loss, contrastive, curl, div, identity = criterion(
+                model, embeddings, target_attributes, return_components=True
             )
             total_contrastive += contrastive.item()
             total_curl += curl.item()
             total_div += div.item()
+            total_identity += identity.item()
         else:
-            loss = criterion(model, embeddings, attributes)
+            loss = criterion(model, embeddings, target_attributes)
             contrastive = loss
 
         loss.backward()
@@ -242,7 +257,8 @@ def train_epoch(model, dataloader, criterion, optimizer, device,
                 'loss': loss.item(),
                 'contr': contrastive.item(),
                 'curl': curl.item(),
-                'div': div.item()
+                'div': div.item(),
+                'ident': identity.item()
             })
         else:
             pbar.set_postfix({'loss': loss.item()})
@@ -254,6 +270,7 @@ def train_epoch(model, dataloader, criterion, optimizer, device,
         if use_regularization:
             writer.add_scalar('Train/Curl', curl.item(), global_step)
             writer.add_scalar('Train/Div', div.item(), global_step)
+            writer.add_scalar('Train/Identity', identity.item(), global_step)
 
     avg_loss = total_loss / len(dataloader)
     print(f"Train Loss: {avg_loss:.4f}")
@@ -272,13 +289,23 @@ def validate(model, dataloader, criterion, device, use_regularization, writer, e
             embeddings = batch['embedding'].to(device)
             attributes = batch['attributes'].to(device)
 
+            # During validation, also use attribute augmentation
+            target_attributes = attributes.clone()
+            if torch.rand(1).item() > 0.5:
+                batch_size = attributes.size(0)
+                for i in range(batch_size):
+                    num_flips = torch.randint(1, 3, (1,)).item()
+                    attrs_to_flip = torch.randperm(5)[:num_flips]
+                    for attr_idx in attrs_to_flip:
+                        target_attributes[i, attr_idx] = 1 - target_attributes[i, attr_idx]
+
             if use_regularization:
-                loss, contrastive, curl, div = criterion(
-                    model, embeddings, attributes, return_components=True
+                loss, contrastive, curl, div, identity = criterion(
+                    model, embeddings, target_attributes, return_components=True
                 )
                 total_contrastive += contrastive.item()
             else:
-                loss = criterion(model, embeddings, attributes)
+                loss = criterion(model, embeddings, target_attributes)
 
             total_loss += loss.item()
 

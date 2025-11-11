@@ -1,7 +1,9 @@
 """
 Combined loss function for FCLF training.
 
-L_total = L_FCLF + λ_curl * R_curl + λ_div * R_div
+L_total = L_FCLF + λ_curl * R_curl + λ_div * R_div + λ_identity * ||z_flowed - z_original||^2
+
+The identity loss prevents mode collapse by keeping flowed embeddings close to their originals.
 """
 
 import torch
@@ -21,6 +23,7 @@ class FCLFLoss(nn.Module):
         alpha: float = 0.1,
         lambda_curl: float = 0.01,
         lambda_div: float = 0.01,
+        lambda_identity: float = 0.01,
         curl_epsilon: float = 1e-4,
         curl_samples: int = 10,
         div_epsilon: float = 1e-4
@@ -31,6 +34,7 @@ class FCLFLoss(nn.Module):
             alpha: Flow step size
             lambda_curl: Weight for curl regularization
             lambda_div: Weight for divergence regularization
+            lambda_identity: Weight for identity preservation loss
             curl_epsilon: Epsilon for curl finite differences
             curl_samples: Number of random planes for curl estimation
             div_epsilon: Epsilon for divergence finite differences
@@ -40,6 +44,7 @@ class FCLFLoss(nn.Module):
         self.alpha = alpha
         self.lambda_curl = lambda_curl
         self.lambda_div = lambda_div
+        self.lambda_identity = lambda_identity
 
         # Loss components
         self.contrastive_loss = SimpleContrastiveLoss(
@@ -89,15 +94,20 @@ class FCLFLoss(nn.Module):
         curl_loss = self.curl_reg(vector_field, z, y)
         div_loss = self.div_reg(vector_field, z, y)
 
+        # Identity preservation loss (prevents mode collapse)
+        # Penalize large deviations from original embedding
+        identity_loss = torch.mean((z_flowed - z) ** 2)
+
         # Total loss
         total_loss = (
             contrastive_loss +
             self.lambda_curl * curl_loss +
-            self.lambda_div * div_loss
+            self.lambda_div * div_loss +
+            self.lambda_identity * identity_loss
         )
 
         if return_components:
-            return total_loss, contrastive_loss, curl_loss, div_loss
+            return total_loss, contrastive_loss, curl_loss, div_loss, identity_loss
         else:
             return total_loss
 
