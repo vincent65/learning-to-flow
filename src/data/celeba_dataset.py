@@ -135,8 +135,11 @@ class CelebADataset(Dataset):
         }
 
         # Add embedding if available
+        # Note: use idx (not actual_idx) because embeddings are split-specific
+        # idx is 0-based within this split (e.g., 0-19999 for val)
+        # actual_idx is global (e.g., 162000-181999 for val)
         if self.embeddings is not None:
-            item['embedding'] = self.embeddings[actual_idx]
+            item['embedding'] = self.embeddings[idx]
 
         # Load image if requested
         if self.load_images:
