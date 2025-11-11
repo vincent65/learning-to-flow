@@ -154,17 +154,23 @@ class AttributeContrastiveLoss(nn.Module):
         num_prototypes = unique_attrs.size(0)
 
         # Compute prototype embeddings as mean of embeddings with same attributes
-        prototypes = torch.zeros(
-            num_prototypes, z_norm.size(1),
-            device=z_norm.device, dtype=z_norm.dtype
-        )
+        prototype_list = []
 
         for i in range(num_prototypes):
             mask = (inverse_indices == i)
             if mask.sum() > 0:
-                prototypes[i] = z_norm[mask].mean(dim=0)
-                # Normalize prototype
-                prototypes[i] = F.normalize(prototypes[i].unsqueeze(0), dim=1).squeeze(0)
+                # Compute mean embedding for this attribute combination
+                proto = z_norm[mask].mean(dim=0, keepdim=True)
+                # Normalize prototype (non-in-place)
+                proto = F.normalize(proto, dim=1)
+                prototype_list.append(proto)
+            else:
+                # Empty prototype (shouldn't happen but handle gracefully)
+                proto = torch.zeros(1, z_norm.size(1), device=z_norm.device, dtype=z_norm.dtype)
+                prototype_list.append(proto)
+
+        # Stack prototypes [num_prototypes, embedding_dim]
+        prototypes = torch.cat(prototype_list, dim=0)
 
         # Compute similarity between each embedding and all prototypes
         # [batch, num_prototypes]
