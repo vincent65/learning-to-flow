@@ -30,6 +30,10 @@ while [[ $# -gt 0 ]]; do
             USE_VAE="--use_vae"
             shift
             ;;
+        --resume)
+            RESUME="--resume $2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -51,7 +55,8 @@ python -m src.training.train_decoder \
     --celeba_root "$CELEBA_ROOT" \
     --embedding_dir "$EMBEDDING_DIR" \
     --output_dir "$OUTPUT_DIR" \
-    $USE_VAE
+    $USE_VAE \
+    $RESUME
 
 echo "======================================"
 echo "Training complete!"

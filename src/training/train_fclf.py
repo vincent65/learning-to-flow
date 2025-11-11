@@ -24,7 +24,8 @@ def train_fclf(
     embedding_dir: str,
     output_dir: str,
     use_regularization: bool = True,
-    device: str = None
+    device: str = None,
+    resume_from: str = None
 ):
     """
     Train FCLF vector field network.
@@ -36,6 +37,7 @@ def train_fclf(
         output_dir: Output directory for checkpoints and logs
         use_regularization: Whether to use curl/divergence regularization
         device: Device to use
+        resume_from: Path to checkpoint to resume from (optional)
     """
     # Load config
     with open(config_path, 'r') as f:
@@ -124,11 +126,26 @@ def train_fclf(
         eta_min=1e-6
     )
 
-    # Training loop
+    # Resume from checkpoint if specified
+    start_epoch = 0
     best_val_loss = float('inf')
+
+    if resume_from is not None:
+        if os.path.exists(resume_from):
+            print(f"\nResuming from checkpoint: {resume_from}")
+            checkpoint = torch.load(resume_from, map_location=device)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            start_epoch = checkpoint['epoch'] + 1
+            best_val_loss = checkpoint.get('val_loss', float('inf'))
+            print(f"Resuming from epoch {start_epoch} (best val loss: {best_val_loss:.4f})")
+        else:
+            print(f"Warning: Checkpoint not found at {resume_from}, starting from scratch")
+
+    # Training loop
     num_epochs = config['training']['num_epochs']
 
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         print(f"\nEpoch {epoch+1}/{num_epochs}")
 
         # Train
@@ -287,6 +304,8 @@ if __name__ == "__main__":
                         help="Disable curl/divergence regularization")
     parser.add_argument("--device", type=str, default=None,
                         help="Device (cuda/cpu)")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to checkpoint to resume from (e.g., outputs/fclf/checkpoints/fclf_latest.pt)")
 
     args = parser.parse_args()
 
@@ -296,5 +315,6 @@ if __name__ == "__main__":
         embedding_dir=args.embedding_dir,
         output_dir=args.output_dir,
         use_regularization=not args.no_regularization,
-        device=args.device
+        device=args.device,
+        resume_from=args.resume
     )

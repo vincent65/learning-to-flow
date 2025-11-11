@@ -68,6 +68,15 @@ python scripts/precompute_embeddings.py \
     --output_dir outputs/decoder
 ```
 
+**Resume decoder training:**
+```bash
+./scripts/train_decoder.sh \
+    --celeba_root data/celeba \
+    --embedding_dir data/embeddings \
+    --output_dir outputs/decoder \
+    --resume outputs/decoder/checkpoints/decoder_latest.pt
+```
+
 **Monitor with TensorBoard:**
 ```bash
 tensorboard --logdir outputs/decoder/logs
@@ -102,8 +111,21 @@ tensorboard --logdir outputs/fclf/logs
 - Total loss should converge by epoch 30-40
 
 **Checkpoints saved to:**
-- `outputs/fclf/checkpoints/fclf_best.pt`
-- `outputs/fclf/checkpoints/fclf_epoch_5.pt`, etc.
+- `outputs/fclf/checkpoints/fclf_best.pt` (best validation loss)
+- `outputs/fclf/checkpoints/fclf_latest.pt` (most recent epoch)
+- `outputs/fclf/checkpoints/fclf_epoch_5.pt`, etc. (every 5 epochs)
+
+**Resume training from checkpoint:**
+```bash
+# Resume from where you left off
+./scripts/train_fclf.sh \
+    --celeba_root data/celeba \
+    --embedding_dir data/embeddings \
+    --output_dir outputs/fclf \
+    --resume outputs/fclf/checkpoints/fclf_latest.pt
+```
+
+**Tip:** For faster experimentation, reduce epochs in config (e.g., 10 epochs ≈ 4 hours on T4). Resume later if you need more training.
 
 ### 6. Evaluate (5-10 minutes)
 
@@ -196,6 +218,25 @@ y = torch.randint(0, 2, (8, 5)).float()
 v = model(z, y)
 print(f"Velocity shape: {v.shape}")  # Should be [8, 512]
 ```
+
+## Configuration Tips
+
+### Adjusting Training Duration
+
+**For quick experiments (testing changes):**
+```yaml
+# In configs/fclf_config.yaml or configs/decoder_config.yaml
+training:
+  num_epochs: 10  # ~4 hours for FCLF on T4, ~40 minutes for decoder
+```
+
+**For production/final results:**
+```yaml
+training:
+  num_epochs: 50  # Full training for best performance
+```
+
+You can always resume later with `--resume` flag to continue training!
 
 ## Troubleshooting
 
