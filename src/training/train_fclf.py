@@ -58,6 +58,15 @@ def train_fclf(
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device}")
 
+    # Enable performance optimizations for modern GPUs (L4, A100, etc.)
+    if device == 'cuda':
+        # Enable cuDNN benchmark for faster convolutions
+        torch.backends.cudnn.benchmark = True
+        # Enable TF32 for Ampere+ GPUs (L4, A100) - 4x faster!
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        print("✓ Enabled cuDNN benchmark and TF32 (Tensor Core acceleration)")
+
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     checkpoint_dir = os.path.join(output_dir, 'checkpoints')
