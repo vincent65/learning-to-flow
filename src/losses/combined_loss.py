@@ -87,6 +87,10 @@ class FCLFLoss(nn.Module):
         v = vector_field(z, y)
         z_flowed = z + self.alpha * v
 
+        # CRITICAL: Normalize flowed embeddings to stay in CLIP space
+        # CLIP embeddings are unit-normalized; we must maintain this
+        z_flowed = torch.nn.functional.normalize(z_flowed, dim=1)
+
         # Contrastive loss
         contrastive_loss = self.contrastive_loss(z, z_flowed, y)
 
@@ -96,6 +100,7 @@ class FCLFLoss(nn.Module):
 
         # Identity preservation loss (prevents mode collapse)
         # Penalize large deviations from original embedding
+        # NOTE: Now computed AFTER normalization, so measures angular distance
         identity_loss = torch.mean((z_flowed - z) ** 2)
 
         # Total loss
