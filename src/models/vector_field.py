@@ -115,7 +115,10 @@ class VectorFieldNetwork(nn.Module):
     ) -> torch.Tensor:
         """Single Euler integration step."""
         v = self.forward(z, y)
-        return z + step_size * v
+        z_next = z + step_size * v
+        # CRITICAL: Normalize to keep on unit sphere (CLIP embedding space)
+        z_next = torch.nn.functional.normalize(z_next, dim=1)
+        return z_next
 
     def _rk4_step(
         self,
@@ -129,7 +132,10 @@ class VectorFieldNetwork(nn.Module):
         k3 = self.forward(z + 0.5 * step_size * k2, y)
         k4 = self.forward(z + step_size * k3, y)
 
-        return z + (step_size / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
+        z_next = z + (step_size / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
+        # CRITICAL: Normalize to keep on unit sphere (CLIP embedding space)
+        z_next = torch.nn.functional.normalize(z_next, dim=1)
+        return z_next
 
     def get_trajectory(
         self,
