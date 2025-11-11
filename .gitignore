@@ -67,3 +67,4 @@ wandb/
 tmp/
 temp/
 *.tmp
+data.zip

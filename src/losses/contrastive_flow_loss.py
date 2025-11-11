@@ -106,15 +106,20 @@ class ContrastiveFlowLoss(nn.Module):
 
 class AttributeContrastiveLoss(nn.Module):
     """
-    Alternative contrastive loss that considers partial attribute matching.
+    Improved contrastive loss with prototype-based clustering.
 
-    Weights positive/negative pairs based on number of matching attributes.
+    Key improvements over previous version:
+    1. Computes attribute prototypes (centroids) for each attribute combination
+    2. Pulls flowed embeddings toward their target attribute prototype
+    3. Pushes embeddings away from other attribute prototypes
+
+    This creates explicit attribute-specific clusters and prevents mode collapse.
     """
 
     def __init__(self, temperature: float = 0.07):
         """
         Args:
-            temperature: Temperature parameter
+            temperature: Temperature parameter for contrastive loss
         """
         super().__init__()
         self.temperature = temperature
@@ -125,11 +130,11 @@ class AttributeContrastiveLoss(nn.Module):
         attributes: torch.Tensor
     ) -> torch.Tensor:
         """
-        Compute weighted contrastive loss.
+        Compute prototype-based contrastive loss.
 
         Args:
             z_flowed: [batch, embedding_dim] flowed embeddings
-            attributes: [batch, num_attributes] attribute vectors
+            attributes: [batch, num_attributes] target attribute vectors
 
         Returns:
             loss: scalar contrastive loss
@@ -140,30 +145,83 @@ class AttributeContrastiveLoss(nn.Module):
         # Normalize embeddings
         z_norm = F.normalize(z_flowed, dim=1)
 
-        # Compute similarity matrix
-        similarity = torch.matmul(z_norm, z_norm.t()) / self.temperature
+        # Compute attribute prototypes (centroids for each unique attribute combination)
+        # This creates explicit targets for the model to flow toward
+        unique_attrs, inverse_indices = torch.unique(
+            attributes, dim=0, return_inverse=True
+        )
 
-        # Compute attribute similarity (number of matching attributes)
+        num_prototypes = unique_attrs.size(0)
+
+        # Compute prototype embeddings as mean of embeddings with same attributes
+        prototypes = torch.zeros(
+            num_prototypes, z_norm.size(1),
+            device=z_norm.device, dtype=z_norm.dtype
+        )
+
+        for i in range(num_prototypes):
+            mask = (inverse_indices == i)
+            if mask.sum() > 0:
+                prototypes[i] = z_norm[mask].mean(dim=0)
+                # Normalize prototype
+                prototypes[i] = F.normalize(prototypes[i].unsqueeze(0), dim=1).squeeze(0)
+
+        # Compute similarity between each embedding and all prototypes
+        # [batch, num_prototypes]
+        proto_similarities = torch.matmul(z_norm, prototypes.t()) / self.temperature
+
+        # Create target: each embedding should match its own prototype
+        # [batch, num_prototypes] one-hot encoding
+        targets = torch.zeros_like(proto_similarities)
+        targets[torch.arange(batch_size), inverse_indices] = 1.0
+
+        # InfoNCE-style loss: maximize similarity to correct prototype,
+        # minimize similarity to other prototypes
+        exp_similarities = torch.exp(proto_similarities)
+
+        # Numerator: similarity to correct prototype
+        pos_similarities = (exp_similarities * targets).sum(dim=1)
+
+        # Denominator: sum of all similarities
+        all_similarities = exp_similarities.sum(dim=1)
+
+        # Avoid division by zero
+        all_similarities = torch.clamp(all_similarities, min=1e-8)
+
+        # Cross-entropy loss
+        loss = -torch.log(pos_similarities / all_similarities + 1e-8).mean()
+
+        # Additional pairwise contrastive term for within-batch clustering
+        # This helps when prototypes are under-sampled
+        pairwise_sim = torch.matmul(z_norm, z_norm.t()) / self.temperature
+
+        # Compute attribute similarity matrix
         attr_similarity = torch.matmul(attributes, attributes.t())  # [batch, batch]
 
-        # Normalize to [0, 1]
-        attr_weights = attr_similarity / num_attrs
+        # Positive pairs: same attributes
+        positive_mask = (attr_similarity == num_attrs).float()
+        positive_mask.fill_diagonal_(0)  # Exclude self
 
-        # Remove self-similarity
-        mask = torch.eye(batch_size, device=z_flowed.device).bool()
-        attr_weights.masked_fill_(mask, 0)
+        # Negative pairs: different attributes
+        negative_mask = (attr_similarity < num_attrs).float()
 
-        # Compute weighted loss
-        # High attr_weight -> should have high similarity
-        # Low attr_weight -> should have low similarity
-        target_similarity = attr_weights
+        # Compute pairwise contrastive loss
+        if positive_mask.sum() > 0:
+            # For each sample, compute InfoNCE over its positives vs negatives
+            exp_pairwise = torch.exp(pairwise_sim)
 
-        # MSE between similarity and target
-        loss = F.mse_loss(
-            torch.sigmoid(similarity * ~mask),
-            target_similarity,
-            reduction='mean'
-        )
+            pos_sims = (exp_pairwise * positive_mask).sum(dim=1)
+            all_sims = exp_pairwise.sum(dim=1) - exp_pairwise.diagonal()  # Exclude self
+
+            # Only compute for samples that have positive pairs
+            valid_mask = (positive_mask.sum(dim=1) > 0)
+            if valid_mask.sum() > 0:
+                pairwise_loss = -torch.log(
+                    pos_sims[valid_mask] / (all_sims[valid_mask] + 1e-8) + 1e-8
+                ).mean()
+
+                # Combine prototype loss and pairwise loss
+                loss = 0.7 * loss + 0.3 * pairwise_loss
 
         return loss
 

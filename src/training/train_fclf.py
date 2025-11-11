@@ -217,16 +217,15 @@ def train_epoch(model, dataloader, criterion, optimizer, device,
         embeddings = batch['embedding'].to(device)
         attributes = batch['attributes'].to(device)
 
-        # ATTRIBUTE AUGMENTATION: Flip some attributes to teach transfer
-        # 50% of the time, flip 1-2 random attributes
+        # ATTRIBUTE AUGMENTATION: ALWAYS flip attributes to teach transfer
+        # This is critical - model needs consistent transfer training
         target_attributes = attributes.clone()
-        if torch.rand(1).item() > 0.5:
-            batch_size = attributes.size(0)
-            for i in range(batch_size):
-                num_flips = torch.randint(1, 3, (1,)).item()  # Flip 1 or 2 attributes
-                attrs_to_flip = torch.randperm(5)[:num_flips]
-                for attr_idx in attrs_to_flip:
-                    target_attributes[i, attr_idx] = 1 - target_attributes[i, attr_idx]
+        batch_size = attributes.size(0)
+        for i in range(batch_size):
+            num_flips = torch.randint(1, 3, (1,)).item()  # Flip 1 or 2 attributes
+            attrs_to_flip = torch.randperm(5)[:num_flips]
+            for attr_idx in attrs_to_flip:
+                target_attributes[i, attr_idx] = 1 - target_attributes[i, attr_idx]
 
         optimizer.zero_grad()
 
