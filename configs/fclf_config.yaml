@@ -11,9 +11,9 @@ training:
 
 loss:
   temperature: 0.07
-  lambda_curl: 0.01
-  lambda_div: 0.01
-  lambda_identity: 0.1  # Identity preservation loss weight (prevents mode collapse)
+  lambda_curl: 0.05  # Increased for smoother flows
+  lambda_div: 0.05   # Increased for smoother flows
+  lambda_identity: 1.0  # MUCH STRONGER - prevents excessive movement
 
 inference:
   num_flow_steps: 10
