@@ -8,7 +8,7 @@ The identity loss prevents mode collapse by keeping flowed embeddings close to t
 
 import torch
 import torch.nn as nn
-from .contrastive_flow_loss import ContrastiveFlowLoss, SimpleContrastiveLoss, AttributeWeightedContrastiveLoss
+from .contrastive_flow_loss import ContrastiveFlowLoss, SimpleContrastiveLoss, AttributeContrastiveLoss
 from .regularization import CurlRegularization, DivergenceRegularization
 
 
@@ -47,9 +47,9 @@ class FCLFLoss(nn.Module):
         self.lambda_identity = lambda_identity
 
         # Loss components
-        # Use AttributeWeightedContrastiveLoss for soft similarity matching
+        # Use AttributeContrastiveLoss for soft similarity matching
         # This never returns zero even with unique attribute combinations
-        self.contrastive_loss = AttributeWeightedContrastiveLoss(
+        self.contrastive_loss = AttributeContrastiveLoss(
             temperature=temperature
         )
 
