@@ -195,5 +195,7 @@ def get_dataloader(
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=True if num_workers > 0 else False,  # Keep workers alive between epochs
+        prefetch_factor=4 if num_workers > 0 else None  # Load 4 batches ahead
     )
