@@ -45,6 +45,15 @@ def train_decoder(
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
+    # Ensure numeric types are correct (some YAML parsers return strings)
+    config['training']['learning_rate'] = float(config['training']['learning_rate'])
+    config['training']['batch_size'] = int(config['training']['batch_size'])
+    config['training']['num_epochs'] = int(config['training']['num_epochs'])
+    config['training']['weight_decay'] = float(config['training']['weight_decay'])
+    config['model']['img_size'] = int(config['model']['img_size'])
+    config['model']['embedding_dim'] = int(config['model']['embedding_dim'])
+    config['data']['num_workers'] = int(config['data']['num_workers'])
+
     # Device
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'

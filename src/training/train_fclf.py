@@ -41,6 +41,15 @@ def train_fclf(
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
+    # Ensure numeric types are correct (some YAML parsers return strings)
+    config['training']['learning_rate'] = float(config['training']['learning_rate'])
+    config['training']['batch_size'] = int(config['training']['batch_size'])
+    config['training']['num_epochs'] = int(config['training']['num_epochs'])
+    config['training']['alpha'] = float(config['training']['alpha'])
+    config['loss']['temperature'] = float(config['loss']['temperature'])
+    config['loss']['lambda_curl'] = float(config['loss']['lambda_curl'])
+    config['loss']['lambda_div'] = float(config['loss']['lambda_div'])
+
     # Device
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -55,13 +64,14 @@ def train_fclf(
     writer = SummaryWriter(os.path.join(output_dir, 'logs'))
 
     # Data loaders (no images needed, just embeddings and attributes)
+    # Use num_workers=0 to avoid multiprocessing issues on VMs
     train_loader = get_dataloader(
         root_dir=celeba_root,
         split='train',
         batch_size=config['training']['batch_size'],
         embedding_path=os.path.join(embedding_dir, 'train_embeddings.pt'),
         load_images=False,
-        num_workers=4,
+        num_workers=0,
         shuffle=True
     )
 
@@ -71,7 +81,7 @@ def train_fclf(
         batch_size=config['training']['batch_size'],
         embedding_path=os.path.join(embedding_dir, 'val_embeddings.pt'),
         load_images=False,
-        num_workers=4,
+        num_workers=0,
         shuffle=False
     )
 
