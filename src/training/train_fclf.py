@@ -62,10 +62,19 @@ def train_fclf(
     if device == 'cuda':
         # Enable cuDNN benchmark for faster convolutions
         torch.backends.cudnn.benchmark = True
+
         # Enable TF32 for Ampere+ GPUs (L4, A100) - 4x faster!
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-        print("✓ Enabled cuDNN benchmark and TF32 (Tensor Core acceleration)")
+        # Use new PyTorch 2.9+ API if available, fallback to old API
+        try:
+            # New API (PyTorch 2.9+)
+            torch.backends.cuda.matmul.fp32_precision = 'tf32'
+            torch.backends.cudnn.conv.fp32_precision = 'tf32'
+            print("✓ Enabled cuDNN benchmark and TF32 (new API, Tensor Core acceleration)")
+        except AttributeError:
+            # Old API (PyTorch < 2.9)
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            print("✓ Enabled cuDNN benchmark and TF32 (old API, Tensor Core acceleration)")
 
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
