@@ -33,6 +33,7 @@ def evaluate_fclf(
     embedding_dir: str,
     output_dir: str,
     num_samples: int = 1000,
+    split: str = 'test',
     device: str = None
 ):
     """
@@ -44,6 +45,7 @@ def evaluate_fclf(
         embedding_dir: Path to embeddings
         output_dir: Output directory for results
         num_samples: Number of samples to evaluate
+        split: Data split to use ('train', 'val', or 'test')
         device: Device to use
     """
     if device is None:
@@ -72,14 +74,14 @@ def evaluate_fclf(
     model.eval()
 
     # Load data
-    print("Loading data...")
-    test_loader = get_dataloader(
+    print(f"Loading data from {split} split...")
+    data_loader = get_dataloader(
         root_dir=celeba_root,
-        split='test',
+        split=split,
         batch_size=128,
-        embedding_path=os.path.join(embedding_dir, 'test_embeddings.pt'),
+        embedding_path=os.path.join(embedding_dir, f'{split}_embeddings.pt'),
         load_images=False,
-        num_workers=4,
+        num_workers=0,
         shuffle=False
     )
 
@@ -92,7 +94,7 @@ def evaluate_fclf(
 
     count = 0
     with torch.no_grad():
-        for batch in tqdm(test_loader):
+        for batch in tqdm(data_loader):
             if count >= num_samples:
                 break
 
@@ -230,6 +232,9 @@ if __name__ == "__main__":
                         help="Output directory")
     parser.add_argument("--num_samples", type=int, default=1000,
                         help="Number of samples to evaluate")
+    parser.add_argument("--split", type=str, default="test",
+                        choices=["train", "val", "test"],
+                        help="Data split to evaluate on")
     parser.add_argument("--device", type=str, default=None,
                         help="Device")
 
@@ -241,5 +246,6 @@ if __name__ == "__main__":
         embedding_dir=args.embedding_dir,
         output_dir=args.output_dir,
         num_samples=args.num_samples,
+        split=args.split,
         device=args.device
     )
