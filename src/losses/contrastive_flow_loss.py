@@ -154,6 +154,9 @@ class AttributeContrastiveLoss(nn.Module):
         num_prototypes = unique_attrs.size(0)
 
         # Compute prototype embeddings as mean of embeddings with same attributes
+        # CRITICAL: Use stop-gradient (.detach()) to prevent prototype collapse!
+        # Without detach, prototypes and embeddings collapse together to arbitrary points.
+        # With detach, prototypes act as semi-fixed targets computed from current batch.
         prototype_list = []
 
         for i in range(num_prototypes):
@@ -163,6 +166,8 @@ class AttributeContrastiveLoss(nn.Module):
                 proto = z_norm[mask].mean(dim=0, keepdim=True)
                 # Normalize prototype (non-in-place)
                 proto = F.normalize(proto, dim=1)
+                # CRITICAL: Detach from gradient graph to prevent collapse
+                proto = proto.detach()
                 prototype_list.append(proto)
             else:
                 # Empty prototype (shouldn't happen but handle gracefully)
