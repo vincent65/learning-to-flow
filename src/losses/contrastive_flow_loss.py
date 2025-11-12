@@ -106,14 +106,10 @@ class ContrastiveFlowLoss(nn.Module):
 
 class AttributeContrastiveLoss(nn.Module):
     """
-    Improved contrastive loss with prototype-based clustering.
+    Supervised contrastive loss for attribute-based clustering.
 
-    Key improvements over previous version:
-    1. Computes attribute prototypes (centroids) for each attribute combination
-    2. Pulls flowed embeddings toward their target attribute prototype
-    3. Pushes embeddings away from other attribute prototypes
-
-    This creates explicit attribute-specific clusters and prevents mode collapse.
+    Uses simple pairwise InfoNCE without prototypes to avoid collapse issues.
+    Pulls embeddings with same attributes together, pushes different attributes apart.
     """
 
     def __init__(self, temperature: float = 0.07):
@@ -130,7 +126,7 @@ class AttributeContrastiveLoss(nn.Module):
         attributes: torch.Tensor
     ) -> torch.Tensor:
         """
-        Compute prototype-based contrastive loss.
+        Compute supervised contrastive loss.
 
         Args:
             z_flowed: [batch, embedding_dim] flowed embeddings
@@ -145,94 +141,42 @@ class AttributeContrastiveLoss(nn.Module):
         # Normalize embeddings
         z_norm = F.normalize(z_flowed, dim=1)
 
-        # Compute attribute prototypes (centroids for each unique attribute combination)
-        # This creates explicit targets for the model to flow toward
-        unique_attrs, inverse_indices = torch.unique(
-            attributes, dim=0, return_inverse=True
-        )
+        # Compute pairwise similarity matrix
+        similarity = torch.matmul(z_norm, z_norm.t()) / self.temperature
 
-        num_prototypes = unique_attrs.size(0)
-
-        # Compute prototype embeddings as mean of embeddings with same attributes
-        # CRITICAL: Use stop-gradient (.detach()) to prevent prototype collapse!
-        # Without detach, prototypes and embeddings collapse together to arbitrary points.
-        # With detach, prototypes act as semi-fixed targets computed from current batch.
-        prototype_list = []
-
-        for i in range(num_prototypes):
-            mask = (inverse_indices == i)
-            if mask.sum() > 0:
-                # Compute mean embedding for this attribute combination
-                proto = z_norm[mask].mean(dim=0, keepdim=True)
-                # Normalize prototype (non-in-place)
-                proto = F.normalize(proto, dim=1)
-                # CRITICAL: Detach from gradient graph to prevent collapse
-                proto = proto.detach()
-                prototype_list.append(proto)
-            else:
-                # Empty prototype (shouldn't happen but handle gracefully)
-                proto = torch.zeros(1, z_norm.size(1), device=z_norm.device, dtype=z_norm.dtype)
-                prototype_list.append(proto)
-
-        # Stack prototypes [num_prototypes, embedding_dim]
-        prototypes = torch.cat(prototype_list, dim=0)
-
-        # Compute similarity between each embedding and all prototypes
-        # [batch, num_prototypes]
-        proto_similarities = torch.matmul(z_norm, prototypes.t()) / self.temperature
-
-        # Create target: each embedding should match its own prototype
-        # [batch, num_prototypes] one-hot encoding
-        targets = torch.zeros_like(proto_similarities)
-        targets[torch.arange(batch_size), inverse_indices] = 1.0
-
-        # InfoNCE-style loss: maximize similarity to correct prototype,
-        # minimize similarity to other prototypes
-        exp_similarities = torch.exp(proto_similarities)
-
-        # Numerator: similarity to correct prototype
-        pos_similarities = (exp_similarities * targets).sum(dim=1)
-
-        # Denominator: sum of all similarities
-        all_similarities = exp_similarities.sum(dim=1)
-
-        # Avoid division by zero
-        all_similarities = torch.clamp(all_similarities, min=1e-8)
-
-        # Cross-entropy loss
-        loss = -torch.log(pos_similarities / all_similarities + 1e-8).mean()
-
-        # Additional pairwise contrastive term for within-batch clustering
-        # This helps when prototypes are under-sampled
-        pairwise_sim = torch.matmul(z_norm, z_norm.t()) / self.temperature
-
-        # Compute attribute similarity matrix
+        # Compute attribute similarity (number of matching attributes)
         attr_similarity = torch.matmul(attributes, attributes.t())  # [batch, batch]
 
-        # Positive pairs: same attributes
+        # Positive mask: samples with same attributes (all 5 match)
         positive_mask = (attr_similarity == num_attrs).float()
-        positive_mask.fill_diagonal_(0)  # Exclude self
+        positive_mask.fill_diagonal_(0)  # Exclude self-similarity
 
-        # Negative pairs: different attributes
-        negative_mask = (attr_similarity < num_attrs).float()
+        # For each anchor, compute InfoNCE loss
+        # Numerator: similarities to positives
+        # Denominator: similarities to all except self
 
-        # Compute pairwise contrastive loss
-        if positive_mask.sum() > 0:
-            # For each sample, compute InfoNCE over its positives vs negatives
-            exp_pairwise = torch.exp(pairwise_sim)
+        # Mask out diagonal for negatives
+        exp_sim = torch.exp(similarity)
+        exp_sim_diag_masked = exp_sim.clone()
+        exp_sim_diag_masked.fill_diagonal_(0)
 
-            pos_sims = (exp_pairwise * positive_mask).sum(dim=1)
-            all_sims = exp_pairwise.sum(dim=1) - exp_pairwise.diagonal()  # Exclude self
+        # Sum of positive similarities
+        pos_sim_sum = (exp_sim * positive_mask).sum(dim=1)
 
-            # Only compute for samples that have positive pairs
-            valid_mask = (positive_mask.sum(dim=1) > 0)
-            if valid_mask.sum() > 0:
-                pairwise_loss = -torch.log(
-                    pos_sims[valid_mask] / (all_sims[valid_mask] + 1e-8) + 1e-8
-                ).mean()
+        # Sum of all similarities (except self)
+        all_sim_sum = exp_sim_diag_masked.sum(dim=1)
 
-                # Combine prototype loss and pairwise loss
-                loss = 0.7 * loss + 0.3 * pairwise_loss
+        # Only compute loss for anchors that have at least one positive
+        has_positive = (positive_mask.sum(dim=1) > 0)
+
+        if has_positive.sum() == 0:
+            # No positive pairs in batch, return small non-zero loss
+            return torch.tensor(0.1, device=z_flowed.device, requires_grad=True)
+
+        # InfoNCE loss for anchors with positives
+        loss = -torch.log(
+            (pos_sim_sum[has_positive] / (all_sim_sum[has_positive] + 1e-8)) + 1e-8
+        ).mean()
 
         return loss
 
