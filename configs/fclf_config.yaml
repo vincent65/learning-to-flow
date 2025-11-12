@@ -7,14 +7,14 @@ training:
   num_epochs: 50
   batch_size: 512  # Increased from 128 to fully utilize L4 GPU (23GB memory)
   learning_rate: 0.0001  # 1e-4 in decimal notation for YAML compatibility
-  alpha: 0.1  # Flow step size
+  alpha: 0.05  # Flow step size (reduced from 0.1 to encourage smaller movements)
 
 loss:
   temperature: 0.07
   lambda_curl: 0.05  # Increased for smoother flows
   lambda_div: 0.05   # Increased for smoother flows
-  lambda_identity: 0.05  # CRITICAL: Reduced from 1.0 to allow attribute-specific movement
-  # The high identity weight was preventing model from learning diverse flows
+  lambda_identity: 0.2  # Increased from 0.05 to reduce excessive movement
+  # Was 0.05 (too weak), 1.0 (too strong), 0.2 should be balanced
 
 inference:
   num_flow_steps: 10
