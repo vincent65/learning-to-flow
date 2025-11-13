@@ -15,7 +15,10 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root and src directory to path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+sys.path.insert(0, os.path.join(project_root, 'src'))
 
 from models.vector_field import VectorFieldNetwork
 from data.celeba_dataset import get_dataloader
