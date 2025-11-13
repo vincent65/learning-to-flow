@@ -11,10 +11,11 @@ training:
 
 loss:
   temperature: 0.07
+  lambda_contrastive: 0.2  # Reduce contrastive pull to prevent mode collapse
   lambda_curl: 0.05  # Increased for smoother flows
   lambda_div: 0.05   # Increased for smoother flows
-  lambda_identity: 0.2  # Increased from 0.05 to reduce excessive movement
-  # Was 0.05 (too weak), 1.0 (too strong), 0.2 should be balanced
+  lambda_identity: 0.8  # Strong identity preservation to maintain diversity
+  # Was 0.2 (too weak, allowed collapse), now 0.8 (strong diversity preservation)
 
 inference:
   num_flow_steps: 10

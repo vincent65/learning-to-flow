@@ -21,6 +21,7 @@ class FCLFLoss(nn.Module):
         self,
         temperature: float = 0.07,
         alpha: float = 0.1,
+        lambda_contrastive: float = 1.0,
         lambda_curl: float = 0.01,
         lambda_div: float = 0.01,
         lambda_identity: float = 0.01,
@@ -32,6 +33,7 @@ class FCLFLoss(nn.Module):
         Args:
             temperature: Temperature for contrastive loss
             alpha: Flow step size
+            lambda_contrastive: Weight for contrastive loss
             lambda_curl: Weight for curl regularization
             lambda_div: Weight for divergence regularization
             lambda_identity: Weight for identity preservation loss
@@ -42,6 +44,7 @@ class FCLFLoss(nn.Module):
         super().__init__()
 
         self.alpha = alpha
+        self.lambda_contrastive = lambda_contrastive
         self.lambda_curl = lambda_curl
         self.lambda_div = lambda_div
         self.lambda_identity = lambda_identity
@@ -106,7 +109,7 @@ class FCLFLoss(nn.Module):
 
         # Total loss
         total_loss = (
-            contrastive_loss +
+            self.lambda_contrastive * contrastive_loss +
             self.lambda_curl * curl_loss +
             self.lambda_div * div_loss +
             self.lambda_identity * identity_loss

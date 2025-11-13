@@ -50,18 +50,21 @@ class ContrastiveFlowLoss(nn.Module):
         similarity = torch.matmul(z_norm, z_norm.t()) / self.temperature
 
         # Create mask for positive pairs (same attributes)
-        # Two samples are positive if they have identical attribute vectors
+        # Two samples are positive if they share MOST attributes
+        # This prevents mode collapse by allowing diversity within clusters
         attr_similarity = torch.matmul(attributes, attributes.t())
         num_attrs = attributes.size(1)
 
-        # Positive mask: all attributes match
-        positive_mask = (attr_similarity == num_attrs).float()
+        # Positive mask: at least 4 out of 5 attributes match (or all if num_attrs < 5)
+        # This allows some diversity while still clustering by target attributes
+        similarity_threshold = max(num_attrs - 1, int(0.8 * num_attrs))
+        positive_mask = (attr_similarity >= similarity_threshold).float()
 
         # Remove self-similarity
         positive_mask.fill_diagonal_(0)
 
-        # Negative mask: at least one attribute differs
-        negative_mask = (attr_similarity < num_attrs).float()
+        # Negative mask: less than threshold attributes match
+        negative_mask = (attr_similarity < similarity_threshold).float()
 
         # Check if we have valid positive pairs
         num_positives = positive_mask.sum(dim=1)
