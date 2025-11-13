@@ -177,16 +177,7 @@ def main():
         flipbook = flipbook_data[fb_idx]
         trajectory_idx = flipbook['trajectory_idx']
         nearest_indices = flipbook['nearest_indices']  # [num_steps, k]
-
-        # Get start and end info
-        start_idx = trajectory_idx
-        start_item = dataset[start_idx]
-        start_attrs = start_item['attributes'].numpy()
-        start_image_path = start_item['image_path']
-
-        # For target attributes, we need to infer from the original data collection
-        # Since we don't have target_attrs saved, we'll skip the attribute comparison
-        # and just show the flipbook
+        change_str = flipbook.get('change_string', f'trajectory_{trajectory_idx}')
 
         # Get image paths for all steps
         image_paths = []
@@ -199,8 +190,8 @@ def main():
         # Create flipbook grid
         flipbook_grid = create_flipbook_grid(image_paths, num_steps=len(image_paths), img_size=args.img_size)
 
-        # Save just the grid (simpler version without attribute comparison)
-        output_path = os.path.join(args.output_dir, f'flipbook_{trajectory_idx:04d}.png')
+        # Save with descriptive filename
+        output_path = os.path.join(args.output_dir, f'flipbook_{trajectory_idx:04d}_{change_str}.png')
         flipbook_grid.save(output_path)
 
     print(f"\n✅ Generated {num_flipbooks} flipbooks in {args.output_dir}")
@@ -218,6 +209,7 @@ def main():
         flipbook = flipbook_data[fb_idx]
         trajectory_idx = flipbook['trajectory_idx']
         nearest_indices = flipbook['nearest_indices']
+        attr_changes = flipbook.get('attribute_changes', [])
 
         # Get image paths
         image_paths = []
@@ -229,10 +221,11 @@ def main():
         # Create grid
         grid = create_flipbook_grid(image_paths, num_steps=len(image_paths), img_size=args.img_size)
 
-        # Plot
+        # Plot with descriptive title
+        title = f"Trajectory #{trajectory_idx}: {' + '.join(attr_changes) if attr_changes else 'No changes'}"
         axes[i].imshow(grid)
         axes[i].axis('off')
-        axes[i].set_title(f'Trajectory #{trajectory_idx}', fontsize=12, fontweight='bold', loc='left')
+        axes[i].set_title(title, fontsize=12, fontweight='bold', loc='left')
 
     plt.tight_layout()
     summary_path = os.path.join(args.output_dir, 'flipbook_summary.png')

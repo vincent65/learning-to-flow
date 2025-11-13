@@ -301,12 +301,12 @@ def compute_field_diagnostics(model, embeddings, attributes, device, grid_size=5
     }
 
 
-def compute_nearest_neighbor_flipbook(trajectories, all_embeddings, num_paths=50, k=1):
+def compute_nearest_neighbor_flipbook(trajectories, all_embeddings, original_attrs, target_attrs, num_paths=50, k=1):
     """
     For each trajectory, find the k-nearest training images at each step.
 
     Returns:
-        flipbook_data: Dict with indices and distances for visualization
+        flipbook_data: Dict with indices, distances, and attribute changes for visualization
     """
     num_steps = trajectories.shape[1]
     all_embeddings_np = all_embeddings.numpy()
@@ -337,10 +337,27 @@ def compute_nearest_neighbor_flipbook(trajectories, all_embeddings, num_paths=50
             nearest_indices.append(k_nearest.tolist())
             distances.append(dists[k_nearest].tolist())
 
+        # Determine which attributes changed
+        orig_attr = original_attrs[idx].numpy()
+        targ_attr = target_attrs[idx].numpy()
+        attr_changes = []
+
+        for attr_idx, attr_name in enumerate(ATTRIBUTE_NAMES):
+            if orig_attr[attr_idx] != targ_attr[attr_idx]:
+                direction = "add" if targ_attr[attr_idx] == 1 else "remove"
+                attr_changes.append(f"{direction}_{attr_name}")
+
+        # Create descriptive name
+        change_str = "_".join(attr_changes) if attr_changes else "no_change"
+
         flipbook_data.append({
             'trajectory_idx': int(idx),
             'nearest_indices': nearest_indices,  # [num_steps, k]
-            'distances': distances  # [num_steps, k]
+            'distances': distances,  # [num_steps, k]
+            'original_attributes': orig_attr.tolist(),
+            'target_attributes': targ_attr.tolist(),
+            'attribute_changes': attr_changes,
+            'change_string': change_str
         })
 
     return flipbook_data
@@ -536,7 +553,7 @@ def main():
     # 5. Nearest Neighbor Flipbook
     print("[5/7] Computing nearest-neighbor flipbook data...")
     flipbook = compute_nearest_neighbor_flipbook(
-        fclf_trajectories, original_embeddings, num_paths=50, k=1
+        fclf_trajectories, original_embeddings, original_attributes, target_attributes, num_paths=50, k=1
     )
 
     # 6. Evaluate FCLF
