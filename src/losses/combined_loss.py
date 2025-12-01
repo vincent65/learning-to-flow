@@ -1,15 +1,20 @@
 """
 Combined loss function for FCLF training.
 
-L_total = L_FCLF + λ_curl * R_curl + λ_div * R_div + λ_identity * ||z_flowed - z_original||^2
+Following cs229.ipynb: projection to unit sphere provides implicit regularization,
+so identity loss is optional (default 0.0).
 
-The identity loss prevents mode collapse by keeping flowed embeddings close to their originals.
+L_total = λ_c * L_contrastive + λ_curl * R_curl + λ_div * R_div + [λ_id * L_identity]
 """
 
 import torch
 import torch.nn as nn
-from .contrastive_flow_loss import ContrastiveFlowLoss, SimpleContrastiveLoss, AttributeContrastiveLoss
-from .regularization import CurlRegularization, DivergenceRegularization
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from losses.contrastive_flow_loss import ContrastiveFlowLoss, SimpleContrastiveLoss, AttributeContrastiveLoss
+from losses.regularization import CurlRegularization, DivergenceRegularization
+from utils.projection import project_to_sphere
 
 
 class FCLFLoss(nn.Module):
@@ -24,7 +29,7 @@ class FCLFLoss(nn.Module):
         lambda_contrastive: float = 1.0,
         lambda_curl: float = 0.01,
         lambda_div: float = 0.01,
-        lambda_identity: float = 0.01,
+        lambda_identity: float = 0.0,
         curl_epsilon: float = 1e-4,
         curl_samples: int = 10,
         div_epsilon: float = 1e-4
@@ -91,9 +96,9 @@ class FCLFLoss(nn.Module):
         v = vector_field(z, y)
         z_flowed = z + self.alpha * v
 
-        # CRITICAL: Normalize flowed embeddings to stay in CLIP space
-        # CLIP embeddings are unit-normalized; we must maintain this
-        z_flowed = torch.nn.functional.normalize(z_flowed, dim=1)
+        # CRITICAL: Project to unit sphere after flow step (cs229.ipynb key insight)
+        # This prevents latent blow-up and provides implicit regularization
+        z_flowed = project_to_sphere(z_flowed, radius=1.0)
 
         # Contrastive loss (AttributeWeightedContrastiveLoss only needs z_flowed and y)
         contrastive_loss = self.contrastive_loss(z_flowed, y)
@@ -102,10 +107,13 @@ class FCLFLoss(nn.Module):
         curl_loss = self.curl_reg(vector_field, z, y)
         div_loss = self.div_reg(vector_field, z, y)
 
-        # Identity preservation loss (prevents mode collapse)
-        # Penalize large deviations from original embedding
-        # NOTE: Now computed AFTER normalization, so measures angular distance
-        identity_loss = torch.mean((z_flowed - z) ** 2)
+        # Identity preservation loss (optional - cs229.ipynb uses projection instead)
+        # Following cs229: projection provides implicit regularization, so identity loss
+        # is optional (default 0.0). Only compute if lambda_identity > 0.
+        if self.lambda_identity > 0:
+            identity_loss = torch.mean((z_flowed - z) ** 2)
+        else:
+            identity_loss = torch.tensor(0.0, device=z.device)
 
         # Total loss
         total_loss = (

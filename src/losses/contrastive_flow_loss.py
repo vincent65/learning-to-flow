@@ -3,6 +3,10 @@ Contrastive Flow Loss (InfoNCE-style) for FCLF.
 
 The key idea: embeddings flowed toward the same target attributes should be similar,
 while embeddings with different target attributes should be dissimilar.
+
+Implementation follows cs229.ipynb supervised contrastive loss pattern.
+For multi-attribute case, we allow 4/5 attribute matches (from v3 fix) to
+prevent over-clustering while maintaining attribute separation.
 """
 
 import torch

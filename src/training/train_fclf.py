@@ -113,7 +113,8 @@ def train_fclf(
     model = VectorFieldNetwork(
         embedding_dim=config['model']['embedding_dim'],
         num_attributes=config['model']['num_attributes'],
-        hidden_dim=config['model']['hidden_dim']
+        hidden_dim=config['model']['hidden_dim'],
+        projection_radius=config['model'].get('projection_radius', 1.0)  # cs229.ipynb
     )
     model = model.to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")

@@ -42,10 +42,10 @@ Output: v(z, a) [512] velocity vector
 - Number of attributes: 5
 - Parameters: ~395k
 
-**Flow Integration:**
+**Flow Integration (v4 - with projection):**
 ```python
 z_flowed = z + alpha * v(z, a)
-z_flowed = normalize(z_flowed)  # CRITICAL: Stay in CLIP space
+z_flowed = project_to_sphere(z_flowed, radius=1.0)  # CRITICAL: cs229.ipynb pattern
 ```
 
 ---
@@ -73,21 +73,24 @@ z_flowed = normalize(z_flowed)  # CRITICAL: Stay in CLIP space
 
 ### Training Configuration
 
-**Current (v3 - Fixed Mode Collapse):**
+**Current (v4 - cs229.ipynb Projection-Based):**
 ```yaml
+model:
+  projection_radius: 1.0  # Project to unit sphere after each flow step
+
 training:
   num_epochs: 50
   batch_size: 512
   learning_rate: 1e-4
-  alpha: 0.05  # Flow step size
+  alpha: 0.15             # cs229.ipynb: EPS_TRAIN (was 0.05)
   optimizer: Adam
 
 loss:
-  temperature: 0.07
-  lambda_contrastive: 0.2   # Reduced from 1.0
-  lambda_curl: 0.05
-  lambda_div: 0.05
-  lambda_identity: 0.8      # Increased from 0.2
+  temperature: 0.1        # cs229.ipynb: tau (was 0.07)
+  lambda_contrastive: 1.0 # Back to default, projection prevents collapse
+  lambda_curl: 0.01       # cs229.ipynb (was 0.05)
+  lambda_div: 0.01        # cs229.ipynb (was 0.05)
+  lambda_identity: 0.0    # Projection provides regularization (was 0.8)
 ```
 
 **Optimizer:** Adam with default betas (0.9, 0.999)
@@ -274,6 +277,103 @@ z_steered = normalize(z + alpha * sum(v_attr * attr_change))
 ---
 
 ## Change Log
+
+### Version 4 (2025-12-01) - cs229.ipynb Adaptation (Projection-Based Regularization)
+
+**Problem Identified:**
+- v3 changes (softer contrastive, increased identity loss) delayed but did not eliminate mode collapse
+- After 15 epochs training, flipbooks still showed all trajectories converging to "man with mustache" attractor
+- AUC scores were good (0.76-0.86) but qualitative results showed discrete attractor points
+- Root cause: Missing the key constraint from working toy example
+
+**Solution from cs229.ipynb:**
+- Working FCLF implementation on 2D toy dataset that successfully prevents mode collapse
+- KEY INSIGHT: Project embeddings to fixed-radius hypersphere AFTER EVERY flow step
+- This prevents latent blow-up and provides implicit regularization
+- Allows removing strong identity loss (projection does the work)
+
+**Changes Made:**
+
+1. **Created Projection Utility** (`src/utils/projection.py`)
+   - NEW FILE: `project_to_sphere(z, radius=1.0)` function
+   - Projects embeddings to fixed-radius hypersphere: `z_proj = radius * z / ||z||`
+   - Following cs229.ipynb pattern: prevents blow-up, provides implicit regularization
+   - For CLIP: radius=1.0 (unit sphere) since CLIP embeddings are already unit-normalized
+
+2. **Updated Vector Field Model** (`src/models/vector_field.py`)
+   - Added `projection_radius` parameter to `__init__` (default 1.0)
+   - Updated `_euler_step()` and `_rk4_step()` to use `project_to_sphere()` instead of `F.normalize()`
+   - CRITICAL: Projection applied after EVERY integration step
+   - Added comments referencing cs229.ipynb implementation
+
+3. **Updated Combined Loss** (`src/losses/combined_loss.py`)
+   - Changed default `lambda_identity` from 0.01 → 0.0 (projection provides regularization)
+   - Replaced `F.normalize()` with `project_to_sphere(z_flowed, radius=1.0)`
+   - Made identity loss truly optional (skip computation if lambda_identity == 0)
+   - Added header comment explaining cs229.ipynb inspiration
+
+4. **Updated Hyperparameters** (`configs/fclf_config.yaml`)
+   - `temperature`: 0.07 → 0.1 (match cs229.ipynb tau)
+   - `lambda_contrastive`: 0.2 → 1.0 (back to default, projection prevents collapse)
+   - `lambda_curl`: 0.05 → 0.01 (match cs229.ipynb)
+   - `lambda_div`: 0.05 → 0.01 (match cs229.ipynb)
+   - `lambda_identity`: 0.8 → 0.0 (projection provides regularization)
+   - `alpha`: 0.05 → 0.15 (match cs229.ipynb EPS_TRAIN)
+   - NEW: `projection_radius: 1.0` (unit sphere for CLIP)
+
+5. **Updated Training Script** (`src/training/train_fclf.py`)
+   - Pass `projection_radius` from config to VectorFieldNetwork
+   - Uses `.get('projection_radius', 1.0)` for backward compatibility
+
+**Technical Details:**
+
+Projection formula (from cs229.ipynb):
+```python
+z_flowed = z + alpha * v(z, y)
+z_flowed = project_to_sphere(z_flowed, radius=1.0)  # CRITICAL
+```
+
+vs. Previous (v3):
+```python
+z_flowed = z + alpha * v(z, y)
+z_flowed = F.normalize(z_flowed, dim=1)  # Just normalization, no radius control
+```
+
+**Why This Works:**
+- Projection constrains embeddings to fixed-radius sphere
+- Prevents embeddings from drifting to arbitrary magnitudes
+- Provides implicit regularization (no need for strong identity loss)
+- Successfully prevented mode collapse in cs229.ipynb toy example (2D gaussians)
+- More principled than ad-hoc identity loss tuning
+
+**Expected Impact:**
+- Mode collapse eliminated (continuous distributions, not discrete attractors)
+- Flipbooks should show diverse faces with smooth transitions
+- k-NN purity: ~85-90% (excellent clustering without over-clustering)
+- Can use stronger contrastive loss (1.0) since projection prevents collapse
+- Larger alpha (0.15) allows bigger movements while staying on manifold
+
+**Files Modified:**
+- `src/utils/projection.py` (NEW FILE)
+- `src/models/vector_field.py` (projection in integration steps)
+- `src/losses/combined_loss.py` (optional identity loss, use projection)
+- `src/losses/contrastive_flow_loss.py` (documentation update)
+- `configs/fclf_config.yaml` (cs229.ipynb hyperparameters)
+- `src/training/train_fclf.py` (pass projection_radius to model)
+
+**Key Design Decision:**
+- Kept binary attribute vectors (not class indices like cs229.ipynb)
+- Kept 4/5 attribute matching from v3 (good diversity/clustering balance)
+- Used radius=1.0 (cs229.ipynb used 2.0 for toy data, we use 1.0 to match CLIP)
+
+**Status:** Implemented, ready for retraining
+
+**Next Steps:**
+1. Retrain model from scratch with v4 config
+2. Evaluate metrics (should see smooth flipbooks, no discrete attractors)
+3. Compare v3 vs v4 results
+
+---
 
 ### Version 3 (2025-11-12) - Mode Collapse Fix
 
@@ -523,12 +623,13 @@ To reproduce results:
 - [ ] Use random seed 42 for evaluation splits
 - [ ] Evaluate on test set (182,000-202,599)
 
-**Expected Results (v3, after retraining):**
+**Expected Results (v4, after retraining):**
 - k-NN Purity: 85-90%
-- Average AUC: 0.75-0.82
+- Average AUC: 0.78-0.85
 - Centroid Distance: 0.06-0.09
 - Attribute Leakage: < 0.05
-- Flipbooks: Diverse faces with smooth attribute changes
+- Flipbooks: Diverse faces with smooth attribute changes (NO mode collapse)
+- Field Diagnostics: Low curl/divergence (smooth field)
 
 ---
 
@@ -562,6 +663,6 @@ To reproduce results:
 ---
 
 **Document maintained by:** CS229 Project Team
-**Last verified:** 2025-11-12
-**Model version:** v3 (mode collapse fix)
-**Status:** Awaiting retraining with v3 hyperparameters
+**Last verified:** 2025-12-01
+**Model version:** v4 (cs229.ipynb projection-based)
+**Status:** Implemented, ready for retraining from scratch

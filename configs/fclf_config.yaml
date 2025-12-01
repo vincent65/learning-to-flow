@@ -2,20 +2,20 @@ model:
   embedding_dim: 512
   num_attributes: 5
   hidden_dim: 256
+  projection_radius: 1.0  # cs229.ipynb: project to unit sphere after each flow step
 
 training:
   num_epochs: 50
   batch_size: 512  # Increased from 128 to fully utilize L4 GPU (23GB memory)
   learning_rate: 0.0001  # 1e-4 in decimal notation for YAML compatibility
-  alpha: 0.05  # Flow step size (reduced from 0.1 to encourage smaller movements)
+  alpha: 0.15  # cs229.ipynb: EPS_TRAIN=0.15 (was 0.05)
 
 loss:
-  temperature: 0.07
-  lambda_contrastive: 0.2  # Reduce contrastive pull to prevent mode collapse
-  lambda_curl: 0.05  # Increased for smoother flows
-  lambda_div: 0.05   # Increased for smoother flows
-  lambda_identity: 0.8  # Strong identity preservation to maintain diversity
-  # Was 0.2 (too weak, allowed collapse), now 0.8 (strong diversity preservation)
+  temperature: 0.1  # cs229.ipynb: tau=0.1 (was 0.07)
+  lambda_contrastive: 1.0  # cs229.ipynb: back to default (was 0.2)
+  lambda_curl: 0.01  # cs229.ipynb: small regularization (was 0.05)
+  lambda_div: 0.01   # cs229.ipynb: small regularization (was 0.05)
+  lambda_identity: 0.0  # cs229.ipynb: projection provides regularization (was 0.8)
 
 inference:
   num_flow_steps: 10

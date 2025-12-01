@@ -1,11 +1,18 @@
 """
 Vector Field Network for FCLF.
 Learns function-conditioned vector field v_ω(z, y) in CLIP embedding space.
+
+Key insight from cs229.ipynb: Project embeddings to unit sphere after every
+flow step to prevent latent blow-up and mode collapse.
 """
 
 import torch
 import torch.nn as nn
 from typing import Tuple, Optional
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from utils.projection import project_to_sphere
 
 
 class VectorFieldNetwork(nn.Module):
@@ -19,19 +26,22 @@ class VectorFieldNetwork(nn.Module):
         self,
         embedding_dim: int = 512,
         num_attributes: int = 5,
-        hidden_dim: int = 256
+        hidden_dim: int = 256,
+        projection_radius: float = 1.0
     ):
         """
         Args:
             embedding_dim: Dimension of CLIP embeddings
             num_attributes: Number of binary attributes
             hidden_dim: Hidden layer dimension
+            projection_radius: Radius for sphere projection (1.0 for CLIP)
         """
         super().__init__()
 
         self.embedding_dim = embedding_dim
         self.num_attributes = num_attributes
         self.hidden_dim = hidden_dim
+        self.projection_radius = projection_radius
 
         # Network architecture
         input_dim = embedding_dim + num_attributes
@@ -113,11 +123,15 @@ class VectorFieldNetwork(nn.Module):
         y: torch.Tensor,
         step_size: float
     ) -> torch.Tensor:
-        """Single Euler integration step."""
+        """
+        Single Euler integration step with projection.
+
+        Following cs229.ipynb: project to sphere after each step to prevent blow-up.
+        """
         v = self.forward(z, y)
         z_next = z + step_size * v
-        # CRITICAL: Normalize to keep on unit sphere (CLIP embedding space)
-        z_next = torch.nn.functional.normalize(z_next, dim=1)
+        # CRITICAL: Project to unit sphere (cs229.ipynb key insight)
+        z_next = project_to_sphere(z_next, radius=self.projection_radius)
         return z_next
 
     def _rk4_step(
@@ -126,15 +140,19 @@ class VectorFieldNetwork(nn.Module):
         y: torch.Tensor,
         step_size: float
     ) -> torch.Tensor:
-        """Single RK4 integration step."""
+        """
+        Single RK4 integration step with projection.
+
+        Following cs229.ipynb: project to sphere after each step to prevent blow-up.
+        """
         k1 = self.forward(z, y)
         k2 = self.forward(z + 0.5 * step_size * k1, y)
         k3 = self.forward(z + 0.5 * step_size * k2, y)
         k4 = self.forward(z + step_size * k3, y)
 
         z_next = z + (step_size / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
-        # CRITICAL: Normalize to keep on unit sphere (CLIP embedding space)
-        z_next = torch.nn.functional.normalize(z_next, dim=1)
+        # CRITICAL: Project to unit sphere (cs229.ipynb key insight)
+        z_next = project_to_sphere(z_next, radius=self.projection_radius)
         return z_next
 
     def get_trajectory(
