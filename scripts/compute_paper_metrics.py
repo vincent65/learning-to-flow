@@ -363,6 +363,62 @@ def compute_nearest_neighbor_flipbook(trajectories, all_embeddings, original_att
     return flipbook_data
 
 
+def compute_global_geometry_metrics(embeddings, attributes):
+    """
+    Compute global within-class and between-class distances.
+
+    Following cs229.ipynb approach for geometry analysis.
+
+    Args:
+        embeddings: [N, D] tensor of embeddings
+        attributes: [N, num_attrs] tensor of binary attributes
+
+    Returns:
+        within_class_dist: Mean distance from samples to their class centroid
+        between_class_dist: Mean pairwise distance between class centroids
+        geometry_ratio: between / within (higher is better clustering)
+    """
+    # Convert attributes to string labels (for 32 unique combinations)
+    def attrs_to_labels(attrs):
+        return np.array([''.join(map(str, row.astype(int))) for row in attrs])
+
+    labels = attrs_to_labels(attributes.numpy())
+    unique_labels = np.unique(labels)
+
+    # Compute centroids and within-class distances
+    within_dists = []
+    centroids = {}
+
+    for label in unique_labels:
+        mask = labels == label
+        if mask.sum() < 2:
+            continue
+
+        class_emb = embeddings[mask]
+        centroid = class_emb.mean(dim=0)
+        centroids[label] = centroid
+
+        # Within-class: mean distance to centroid
+        distances = torch.norm(class_emb - centroid, dim=1)
+        within_dists.extend(distances.numpy())
+
+    within_class_dist = float(np.mean(within_dists)) if within_dists else 0.0
+
+    # Compute between-class distances (pairwise centroid distances)
+    between_dists = []
+    centroid_list = list(centroids.values())
+
+    for i in range(len(centroid_list)):
+        for j in range(i + 1, len(centroid_list)):
+            dist = torch.norm(centroid_list[i] - centroid_list[j]).item()
+            between_dists.append(dist)
+
+    between_class_dist = float(np.mean(between_dists)) if between_dists else 0.0
+    geometry_ratio = between_class_dist / (within_class_dist + 1e-8)
+
+    return within_class_dist, between_class_dist, geometry_ratio
+
+
 def evaluate_method(embeddings, trajectories, original_attrs, target_attrs, method_name="FCLF"):
     """
     Evaluate a method (FCLF or baseline) on all metrics.
@@ -414,10 +470,16 @@ def evaluate_method(embeddings, trajectories, original_attrs, target_attrs, meth
                  for i in range(len(z_end))]
     centroid_dist = float(np.mean(distances))
 
+    # 4. Geometry metrics (cs229.ipynb-style)
+    within_dist, between_dist, geo_ratio = compute_global_geometry_metrics(z_end, target_attrs)
+
     return {
         'linear_probe': linear_probe,
         'knn_purity': knn_purity,
-        'centroid_distance': centroid_dist
+        'centroid_distance': centroid_dist,
+        'within_class_distance': within_dist,
+        'between_class_distance': between_dist,
+        'geometry_ratio': geo_ratio
     }
 
 
@@ -644,6 +706,17 @@ def main():
     print(f"   Centroid Distance: FCLF={fclf_metrics['centroid_distance']:.4f}  "
           f"Linear={linear_metrics['centroid_distance']:.4f}  "
           f"(Δ={fclf_metrics['centroid_distance'] - linear_metrics['centroid_distance']:+.4f})")
+
+    print("\n   Geometry Metrics (cs229.ipynb-style):")
+    print(f"   Within-class:      FCLF={fclf_metrics['within_class_distance']:.4f}  "
+          f"Linear={linear_metrics['within_class_distance']:.4f}  "
+          f"(Δ={fclf_metrics['within_class_distance'] - linear_metrics['within_class_distance']:+.4f})")
+    print(f"   Between-class:     FCLF={fclf_metrics['between_class_distance']:.4f}  "
+          f"Linear={linear_metrics['between_class_distance']:.4f}  "
+          f"(Δ={fclf_metrics['between_class_distance'] - linear_metrics['between_class_distance']:+.4f})")
+    print(f"   Geometry Ratio:    FCLF={fclf_metrics['geometry_ratio']:.2f}  "
+          f"Linear={linear_metrics['geometry_ratio']:.2f}  "
+          f"(Δ={fclf_metrics['geometry_ratio'] - linear_metrics['geometry_ratio']:+.2f})")
 
     print(f"\n✅ Results saved to: {results_file}")
     print(f"✅ Flipbook data saved to: {flipbook_file}")

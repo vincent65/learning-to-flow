@@ -9,6 +9,9 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import argparse
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -184,6 +187,11 @@ def train_fclf(
         # Learning rate scheduling
         scheduler.step()
 
+        # Quick validation snapshot every 5 epochs (cs229-style monitoring)
+        if (epoch + 1) % 5 == 0:
+            print(f"  Computing validation snapshot...")
+            quick_validation_snapshot(model, val_loader, device, epoch, writer)
+
         # Save checkpoint
         checkpoint = {
             'epoch': epoch,
@@ -294,6 +302,88 @@ def train_epoch(model, dataloader, criterion, optimizer, device,
     print(f"Train Loss: {avg_loss:.4f}")
 
     return avg_loss
+
+
+def quick_validation_snapshot(model, dataloader, device, epoch, writer, num_samples=500):
+    """
+    Quick validation metrics computed every N epochs for early monitoring.
+
+    Following cs229.ipynb approach: test flow quality with per-attribute AUC.
+    Helps detect mode collapse or overfitting early.
+
+    Args:
+        model: VectorFieldNetwork
+        dataloader: Validation dataloader
+        device: torch device
+        epoch: Current epoch
+        writer: TensorBoard writer
+        num_samples: Number of samples to use for quick eval
+    """
+    model.eval()
+
+    ATTRIBUTE_NAMES = ['Smiling', 'Young', 'Male', 'Eyeglasses', 'Mustache']
+
+    # Collect samples
+    embeddings_list = []
+    attributes_list = []
+
+    with torch.no_grad():
+        for batch in dataloader:
+            embeddings_list.append(batch['embedding'])
+            attributes_list.append(batch['attributes'])
+
+            if sum(len(e) for e in embeddings_list) >= num_samples:
+                break
+
+    if not embeddings_list:
+        return
+
+    embeddings = torch.cat(embeddings_list)[:num_samples]
+    attributes = torch.cat(attributes_list)[:num_samples]
+
+    # Apply K=5 flow (quick check)
+    with torch.no_grad():
+        z_flowed = model.get_trajectory(
+            embeddings.to(device),
+            attributes.to(device),
+            num_steps=5
+        )
+        z_flowed = z_flowed[:, -1, :].cpu()  # Take final step
+
+    # Compute per-attribute AUC with quick classifier
+    auc_scores = {}
+
+    for attr_idx, attr_name in enumerate(ATTRIBUTE_NAMES):
+        y = attributes[:, attr_idx].numpy()
+
+        # Quick train/test split
+        split_idx = int(0.7 * len(z_flowed))
+        X_train = z_flowed[:split_idx].numpy()
+        X_test = z_flowed[split_idx:].numpy()
+        y_train = y[:split_idx]
+        y_test = y[split_idx:]
+
+        if len(np.unique(y_test)) < 2:
+            continue
+
+        # Quick logistic regression
+        clf = LogisticRegression(max_iter=300, random_state=42)
+        clf.fit(X_train, y_train)
+
+        # Compute AUC
+        y_pred_proba = clf.predict_proba(X_test)[:, 1]
+        auc = roc_auc_score(y_test, y_pred_proba)
+        auc_scores[attr_name] = auc
+
+        # Log to TensorBoard
+        writer.add_scalar(f'Snapshot/{attr_name}_AUC', auc, epoch)
+
+    # Log mean AUC
+    if auc_scores:
+        mean_auc = np.mean(list(auc_scores.values()))
+        writer.add_scalar('Snapshot/Mean_AUC', mean_auc, epoch)
+
+        print(f"  Snapshot @ epoch {epoch}: Mean AUC (K=5) = {mean_auc:.4f}")
 
 
 def validate(model, dataloader, criterion, device, use_regularization, writer, epoch):
