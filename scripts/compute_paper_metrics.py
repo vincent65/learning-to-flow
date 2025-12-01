@@ -565,10 +565,10 @@ def main():
             attributes = batch['attributes'].to(args.device)
             batch_size = embeddings.size(0)
 
-            # Create target: flip 1-2 random attributes
+            # Create target: flip exactly 1 random attribute
             target_attrs = attributes.clone()
             for i in range(batch_size):
-                num_flips = np.random.randint(1, 3)
+                num_flips = 1  # Changed: only flip one attribute at a time
                 attrs_to_flip = np.random.choice(5, size=num_flips, replace=False)
                 for attr_idx in attrs_to_flip:
                     target_attrs[i, attr_idx] = 1 - target_attrs[i, attr_idx]
