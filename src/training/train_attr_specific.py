@@ -232,13 +232,19 @@ def main():
     if config.get('training', {}).get('use_no_contrastive', False):
         print("Using NO CONTRASTIVE loss (classifier-based)")
         criterion = create_no_contrastive_loss(config)
+        criterion = criterion.to(args.device)  # Move loss to device (has classifiers)
     else:
         print("Using standard contrastive loss")
         criterion = create_attr_specific_loss(config)
 
     # Create optimizer
+    # Include criterion parameters if it has trainable components (classifiers)
+    params_to_optimize = list(model.parameters())
+    if config.get('training', {}).get('use_no_contrastive', False):
+        params_to_optimize += list(criterion.parameters())
+
     optimizer = optim.Adam(
-        model.parameters(),
+        params_to_optimize,
         lr=config['training']['learning_rate']
     )
 
