@@ -311,6 +311,9 @@ def compute_nearest_neighbor_flipbook(trajectories, all_embeddings, original_att
     num_steps = trajectories.shape[1]
     all_embeddings_np = all_embeddings.numpy()
 
+    # Pre-normalize all training embeddings once (MAJOR SPEEDUP!)
+    all_emb_norm = all_embeddings_np / (np.linalg.norm(all_embeddings_np, axis=1, keepdims=True) + 1e-8)
+
     # Select random paths
     indices = np.random.choice(len(trajectories), size=min(num_paths, len(trajectories)), replace=False)
 
@@ -329,9 +332,8 @@ def compute_nearest_neighbor_flipbook(trajectories, all_embeddings, original_att
             # cosine_sim = dot(a, b) / (||a|| * ||b||)
             # For unit vectors: cosine_sim = dot(a, b)
             # distance = 1 - cosine_sim
-            z_t_norm = z_t / (np.linalg.norm(z_t) + 1e-8)  # Normalize
-            all_emb_norm = all_embeddings_np / (np.linalg.norm(all_embeddings_np, axis=1, keepdims=True) + 1e-8)
-            cosine_sim = np.dot(all_emb_norm, z_t_norm)
+            z_t_norm = z_t / (np.linalg.norm(z_t) + 1e-8)  # Normalize query
+            cosine_sim = np.dot(all_emb_norm, z_t_norm)  # Use pre-normalized embeddings
             dists = 1 - cosine_sim  # Convert similarity to distance
 
             # Find k nearest
