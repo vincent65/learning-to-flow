@@ -50,7 +50,7 @@ def train_epoch(
     pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
 
     for batch_idx, batch in enumerate(pbar):
-        embeddings = batch['embedding'].to(device)
+        embeddings = batch['embedding'].to(device).float()  # Convert to float32
         attributes = batch['attributes'].to(device)
         batch_size = embeddings.size(0)
 
@@ -140,7 +140,7 @@ def validate(
 
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="Validation"):
-            embeddings = batch['embedding'].to(device)
+            embeddings = batch['embedding'].to(device).float()  # Convert to float32
             attributes = batch['attributes'].to(device)
             batch_size = embeddings.size(0)
 

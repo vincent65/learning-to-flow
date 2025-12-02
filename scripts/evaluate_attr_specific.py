@@ -92,7 +92,7 @@ def main():
             if count >= args.num_samples:
                 break
 
-            embeddings = batch['embedding'].to(args.device)
+            embeddings = batch['embedding'].to(args.device).float()  # Convert to float32
             attributes = batch['attributes'].to(args.device)
             batch_size = embeddings.size(0)
 
