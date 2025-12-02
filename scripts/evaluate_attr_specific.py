@@ -282,8 +282,8 @@ def main():
     print(f"   {'Attribute':<15} {'AttrSpec':<10} {'Linear':<10} {'Difference'}")
     print("   " + "-"*60)
     for attr in ATTRIBUTE_NAMES:
-        as_acc = attr_specific_metrics['linear_probe_accuracy'].get(attr, 0)
-        lin_acc = linear_metrics['linear_probe_accuracy'].get(attr, 0)
+        as_acc = attr_specific_metrics.get('linear_probe', {}).get(attr, 0)
+        lin_acc = linear_metrics.get('linear_probe', {}).get(attr, 0)
         diff = as_acc - lin_acc
         print(f"   {attr:<15} {as_acc:.4f}     {lin_acc:.4f}     {diff:+.4f}")
 
