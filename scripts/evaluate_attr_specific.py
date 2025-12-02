@@ -38,6 +38,7 @@ from compute_paper_metrics import (
     compute_nearest_neighbor_flipbook,
     evaluate_method,
     plot_auc_curves,
+    compute_linear_steering_baseline,
     ATTRIBUTE_NAMES
 )
 
@@ -139,17 +140,11 @@ def main():
 
     # 2. Linear Steering Baseline
     print("[2/6] Computing linear steering baseline...")
-    # Compute simple linear direction for each attribute
-    # (same as original)
     z_start = trajectories[:, 0, :]
     z_end = trajectories[:, -1, :]
-    directions = target_attributes - original_attributes
-    linear_step_size = 0.1
-    z_linear = z_start + 10 * linear_step_size * directions.unsqueeze(1).expand_as(z_start)
-
-    # Normalize to sphere
-    from src.utils.projection import project_to_sphere
-    z_linear_steered = project_to_sphere(z_linear, radius=1.0)
+    z_linear_steered = compute_linear_steering_baseline(
+        z_start, original_attributes, target_attributes, alpha=0.5
+    )
 
     # 3. AUC Along Path
     print("[3/6] Computing AUC along path...")
