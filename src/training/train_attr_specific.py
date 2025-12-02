@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(project_root, 'src'))
 
 from models.attr_specific_vector_field import AttributeSpecificVectorField
 from losses.attr_specific_losses import create_attr_specific_loss
+from losses.attr_specific_losses_no_contrastive import create_no_contrastive_loss
 from data.celeba_dataset import get_dataloader
 
 
@@ -227,8 +228,13 @@ def main():
     )
     model = model.to(args.device)
 
-    # Create loss
-    criterion = create_attr_specific_loss(config)
+    # Create loss (choose based on config)
+    if config.get('training', {}).get('use_no_contrastive', False):
+        print("Using NO CONTRASTIVE loss (classifier-based)")
+        criterion = create_no_contrastive_loss(config)
+    else:
+        print("Using standard contrastive loss")
+        criterion = create_attr_specific_loss(config)
 
     # Create optimizer
     optimizer = optim.Adam(
