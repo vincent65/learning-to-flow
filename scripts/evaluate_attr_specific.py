@@ -125,7 +125,7 @@ def main():
             count += batch_size
 
     # Concatenate
-    original_embeddings = torch.cat(original_embeddings)[:args.num_samples]
+    original_embeddings = torch.cat(original_embeddings)[:args.num_samples].float()
     original_attributes = torch.cat(original_attributes)[:args.num_samples]
     target_attributes = torch.cat(target_attributes)[:args.num_samples]
     trajectories = torch.cat(trajectories)[:args.num_samples]
@@ -155,7 +155,8 @@ def main():
 
     # 4. Field Diagnostics
     print("[4/6] Computing field diagnostics...")
-    field_stats = compute_field_diagnostics(model, original_embeddings, original_attributes, args.device)
+    grid_size = min(200, len(original_embeddings))  # Don't exceed available samples
+    field_stats = compute_field_diagnostics(model, original_embeddings, original_attributes, args.device, grid_size=grid_size)
 
     # 5. Nearest Neighbor Flipbook
     print("[5/6] Computing nearest-neighbor flipbook data...")
