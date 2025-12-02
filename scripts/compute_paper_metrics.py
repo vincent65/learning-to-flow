@@ -548,6 +548,11 @@ def main():
         shuffle=False
     )
 
+    # Load TRAINING embeddings for flipbook nearest-neighbor search
+    print("Loading training embeddings for flipbook search...")
+    train_embeddings = torch.load(os.path.join(args.embedding_dir, 'train_embeddings.pt'))
+    print(f"  Loaded {len(train_embeddings)} training embeddings")
+
     # Collect data
     print(f"\nCollecting {args.num_samples} samples...")
     original_embeddings = []
@@ -573,8 +578,10 @@ def main():
                 for attr_idx in attrs_to_flip:
                     target_attrs[i, attr_idx] = 1 - target_attrs[i, attr_idx]
 
-            # Get FCLF trajectory
-            trajectory = model.get_trajectory(embeddings, target_attrs, num_steps=10)
+            # Get FCLF trajectory (use config values if available)
+            num_steps = config.get('inference', {}).get('num_flow_steps', 10)
+            step_size = config.get('inference', {}).get('step_size', 0.1)
+            trajectory = model.get_trajectory(embeddings, target_attrs, num_steps=num_steps, step_size=step_size)
 
             # Store
             original_embeddings.append(embeddings.cpu())
@@ -615,7 +622,7 @@ def main():
     # 5. Nearest Neighbor Flipbook
     print("[5/7] Computing nearest-neighbor flipbook data...")
     flipbook = compute_nearest_neighbor_flipbook(
-        fclf_trajectories, original_embeddings, original_attributes, target_attributes, num_paths=50, k=1
+        fclf_trajectories, train_embeddings, original_attributes, target_attributes, num_paths=50, k=1
     )
 
     # 6. Evaluate FCLF
