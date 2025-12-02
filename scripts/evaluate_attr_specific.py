@@ -148,8 +148,9 @@ def main():
 
     # 3. AUC Along Path
     print("[3/6] Computing AUC along path...")
+    num_steps = trajectories.shape[1] - 1  # trajectory has shape [N, num_steps+1, 512]
     auc_curves, monotonic_frac = compute_auc_along_path(
-        trajectories, original_attributes, target_attributes
+        trajectories, target_attributes, num_steps=num_steps
     )
 
     # 4. Field Diagnostics
