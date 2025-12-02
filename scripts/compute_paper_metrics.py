@@ -325,14 +325,17 @@ def compute_nearest_neighbor_flipbook(trajectories, all_embeddings, original_att
         for step in range(num_steps):
             z_t = path[step].numpy()  # [512]
 
-            # Compute distances to all embeddings
-            dists = np.linalg.norm(all_embeddings_np - z_t, axis=1)
+            # Compute distances using cosine similarity (better for normalized embeddings)
+            # cosine_sim = dot(a, b) / (||a|| * ||b||)
+            # For unit vectors: cosine_sim = dot(a, b)
+            # distance = 1 - cosine_sim
+            z_t_norm = z_t / (np.linalg.norm(z_t) + 1e-8)  # Normalize
+            all_emb_norm = all_embeddings_np / (np.linalg.norm(all_embeddings_np, axis=1, keepdims=True) + 1e-8)
+            cosine_sim = np.dot(all_emb_norm, z_t_norm)
+            dists = 1 - cosine_sim  # Convert similarity to distance
 
-            # Find k nearest (excluding self if idx is in all_embeddings)
-            k_nearest = np.argsort(dists)[:k+1]
-
-            # Exclude self
-            k_nearest = k_nearest[k_nearest != idx][:k]
+            # Find k nearest
+            k_nearest = np.argsort(dists)[:k]
 
             nearest_indices.append(k_nearest.tolist())
             distances.append(dists[k_nearest].tolist())
