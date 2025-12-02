@@ -114,7 +114,8 @@ def main():
                 embeddings,
                 target_attrs,
                 num_steps=num_steps,
-                step_size=step_size
+                step_size=step_size,
+                current_attrs=attributes  # CRITICAL: Pass current attributes!
             )
 
             # Store

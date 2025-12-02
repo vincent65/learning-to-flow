@@ -211,7 +211,8 @@ class AttributeSpecificVectorField(nn.Module):
         y: torch.Tensor,
         num_steps: int = 10,
         step_size: float = 0.1,
-        method: str = 'euler'
+        method: str = 'euler',
+        current_attrs: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
         Get full trajectory during flow.
@@ -222,6 +223,9 @@ class AttributeSpecificVectorField(nn.Module):
             num_steps: Number of flow steps
             step_size: Step size
             method: Integration method
+            current_attrs: [batch, num_attributes] current attributes (optional)
+                          If provided, computes direction as (target - current)
+                          If None, assumes moving from opposite state
 
         Returns:
             trajectory: [batch, num_steps+1, embedding_dim]
@@ -232,7 +236,7 @@ class AttributeSpecificVectorField(nn.Module):
 
         for _ in range(num_steps):
             if method == 'euler':
-                z_current = self._euler_step(z_current, y, step_size)
+                z_current = self._euler_step(z_current, y, step_size, current_attrs)
             else:
                 raise ValueError(f"Unknown integration method: {method}")
 
