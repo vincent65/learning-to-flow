@@ -41,12 +41,7 @@ def train_epoch(
     model.train()
 
     total_loss = 0.0
-    loss_components = {
-        'contrastive': 0.0,
-        'orthogonal': 0.0,
-        'identity': 0.0,
-        'smoothness': 0.0
-    }
+    loss_components = {}  # Will be populated dynamically based on loss type
 
     pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
 
@@ -100,17 +95,26 @@ def train_epoch(
 
         # Update metrics
         total_loss += loss.item()
-        for key in loss_components.keys():
-            if key in losses:
+        for key in losses.keys():
+            if key != 'total':  # Skip the total key
+                if key not in loss_components:
+                    loss_components[key] = 0.0
                 loss_components[key] += losses[key].item()
 
         # Update progress bar
-        pbar.set_postfix({
-            'loss': f"{loss.item():.4f}",
-            'contr': f"{losses['contrastive'].item():.3f}",
-            'orth': f"{losses['orthogonal'].item():.3f}",
-            'ident': f"{losses['identity'].item():.4f}"
-        })
+        postfix = {'loss': f"{loss.item():.4f}"}
+
+        # Add loss components that exist
+        if 'contrastive' in losses:
+            postfix['contr'] = f"{losses['contrastive'].item():.3f}"
+        if 'classifier' in losses:
+            postfix['class'] = f"{losses['classifier'].item():.3f}"
+        if 'orthogonal' in losses:
+            postfix['orth'] = f"{losses['orthogonal'].item():.3f}"
+        if 'identity' in losses:
+            postfix['ident'] = f"{losses['identity'].item():.4f}"
+
+        pbar.set_postfix(postfix)
 
     # Average losses
     num_batches = len(train_loader)
@@ -132,12 +136,7 @@ def validate(
     model.eval()
 
     total_loss = 0.0
-    loss_components = {
-        'contrastive': 0.0,
-        'orthogonal': 0.0,
-        'identity': 0.0,
-        'smoothness': 0.0
-    }
+    loss_components = {}  # Will be populated dynamically
 
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="Validation"):
@@ -178,8 +177,10 @@ def validate(
             )
 
             total_loss += losses['total'].item()
-            for key in loss_components.keys():
-                if key in losses:
+            for key in losses.keys():
+                if key != 'total':
+                    if key not in loss_components:
+                        loss_components[key] = 0.0
                     loss_components[key] += losses[key].item()
 
     # Average losses
@@ -304,9 +305,16 @@ def main():
         )
 
         print(f"Train Loss: {train_loss:.4f}")
-        print(f"  Contrastive: {train_components['contrastive']:.4f}")
-        print(f"  Orthogonal:  {train_components['orthogonal']:.4f}")
-        print(f"  Identity:    {train_components['identity']:.4f}")
+        if 'contrastive' in train_components:
+            print(f"  Contrastive: {train_components['contrastive']:.4f}")
+        if 'classifier' in train_components:
+            print(f"  Classifier:  {train_components['classifier']:.4f}")
+        if 'orthogonal' in train_components:
+            print(f"  Orthogonal:  {train_components['orthogonal']:.4f}")
+        if 'identity' in train_components:
+            print(f"  Identity:    {train_components['identity']:.4f}")
+        if 'smoothness' in train_components:
+            print(f"  Smoothness:  {train_components['smoothness']:.4f}")
 
         # Log to TensorBoard
         writer.add_scalar('Loss/train', train_loss, epoch)
