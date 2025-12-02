@@ -51,6 +51,7 @@ def main():
     parser.add_argument('--output_dir', type=str, required=True)
     parser.add_argument('--num_samples', type=int, default=2000)
     parser.add_argument('--device', type=str, default='cuda')
+    parser.add_argument('--skip-flipbook', action='store_true', help='Skip nearest-neighbor flipbook computation (very slow)')
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -191,18 +192,22 @@ def main():
             json.dump(field_stats, f)
 
     # 5. Nearest Neighbor Flipbook (VERY SLOW - can take 15+ minutes)
-    flipbook_cache = os.path.join(cache_dir, 'flipbook_data.json')
-    if os.path.exists(flipbook_cache):
-        print("[5/6] ✓ Loading cached flipbook data...")
-        with open(flipbook_cache) as f:
-            flipbook = json.load(f)
+    if args.skip_flipbook:
+        print("[5/6] ⊘ Skipping flipbook computation (--skip-flipbook flag set)")
+        flipbook = []
     else:
-        print("[5/6] Computing nearest-neighbor flipbook data (this may take 15+ minutes)...")
-        flipbook = compute_nearest_neighbor_flipbook(
-            trajectories, train_embeddings, original_attributes, target_attributes, num_paths=50, k=1
-        )
-        with open(flipbook_cache, 'w') as f:
-            json.dump(flipbook, f)
+        flipbook_cache = os.path.join(cache_dir, 'flipbook_data.json')
+        if os.path.exists(flipbook_cache):
+            print("[5/6] ✓ Loading cached flipbook data...")
+            with open(flipbook_cache) as f:
+                flipbook = json.load(f)
+        else:
+            print("[5/6] Computing nearest-neighbor flipbook data (this may take 15+ minutes)...")
+            flipbook = compute_nearest_neighbor_flipbook(
+                trajectories, train_embeddings, original_attributes, target_attributes, num_paths=50, k=1
+            )
+            with open(flipbook_cache, 'w') as f:
+                json.dump(flipbook, f)
 
     # 6. Method Comparison
     metrics_cache = os.path.join(cache_dir, 'method_metrics.json')

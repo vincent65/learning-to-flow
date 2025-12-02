@@ -65,7 +65,8 @@ python scripts/evaluate_attr_specific.py \
     --celeba_root data/celeba \
     --output_dir outputs/attr_specific_test/evaluation \
     --num_samples 200 \
-    --device cuda
+    --device cuda \
+    --skip-flipbook
 
 echo ""
 echo "✓ Evaluation complete!"
