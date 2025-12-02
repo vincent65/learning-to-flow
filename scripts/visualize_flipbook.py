@@ -159,10 +159,11 @@ def main():
         flipbook_data = json.load(f)
 
     # Load dataset to get image paths and attributes
+    # IMPORTANT: Load TRAIN split since flipbook nearest_indices point to training set
     print("Loading CelebA dataset...")
     dataset = CelebADataset(
         root_dir=args.celeba_root,
-        split='test',
+        split='train',  # Changed from 'test' to 'train'
         embedding_path=None,  # We don't need embeddings
         load_images=False
     )
