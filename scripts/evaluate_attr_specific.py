@@ -134,9 +134,23 @@ def main():
     print("COMPUTING METRICS")
     print("="*80)
 
+    # Create cache directory for resumability
+    cache_dir = os.path.join(args.output_dir, 'cache')
+    os.makedirs(cache_dir, exist_ok=True)
+    print(f"Cache directory: {cache_dir}")
+    print("(Delete cache files to recompute)\n")
+
     # 1. Attribute Leakage
-    print("\n[1/6] Computing attribute leakage...")
-    leakage = compute_attribute_leakage(trajectories, original_attributes, target_attributes)
+    leakage_cache = os.path.join(cache_dir, 'leakage.json')
+    if os.path.exists(leakage_cache):
+        print("\n[1/6] ✓ Loading cached attribute leakage...")
+        with open(leakage_cache) as f:
+            leakage = json.load(f)
+    else:
+        print("\n[1/6] Computing attribute leakage...")
+        leakage = compute_attribute_leakage(trajectories, original_attributes, target_attributes)
+        with open(leakage_cache, 'w') as f:
+            json.dump(leakage, f)
 
     # 2. Linear Steering Baseline
     print("[2/6] Computing linear steering baseline...")
@@ -146,12 +160,22 @@ def main():
         z_start, original_attributes, target_attributes, alpha=0.5
     )
 
-    # 3. AUC Along Path
-    print("[3/6] Computing AUC along path...")
-    num_steps = trajectories.shape[1] - 1  # trajectory has shape [N, num_steps+1, 512]
-    auc_curves, monotonic_frac = compute_auc_along_path(
-        trajectories, target_attributes, num_steps=num_steps
-    )
+    # 3. AUC Along Path (SLOW - can take 10+ minutes)
+    auc_cache = os.path.join(cache_dir, 'auc.json')
+    if os.path.exists(auc_cache):
+        print("[3/6] ✓ Loading cached AUC curves...")
+        with open(auc_cache) as f:
+            auc_data = json.load(f)
+            auc_curves = auc_data['curves']
+            monotonic_frac = auc_data['monotonic']
+    else:
+        print("[3/6] Computing AUC along path (this may take 10+ minutes)...")
+        num_steps = trajectories.shape[1] - 1  # trajectory has shape [N, num_steps+1, 512]
+        auc_curves, monotonic_frac = compute_auc_along_path(
+            trajectories, target_attributes, num_steps=num_steps
+        )
+        with open(auc_cache, 'w') as f:
+            json.dump({'curves': auc_curves, 'monotonic': monotonic_frac}, f)
 
     # 4. Field Diagnostics
     print("[4/6] Computing field diagnostics...")
@@ -204,8 +228,10 @@ def main():
 
     print("\n1. ATTRIBUTE LEAKAGE (lower is better):")
     for attr, score in leakage.items():
-        if isinstance(score, dict):
-            print(f"   {attr}: {score['leakage']:.4f} (acc: {score['acc_start']:.3f} → {score['acc_end']:.3f})")
+        if isinstance(score, dict) and 'leakage' in score:
+            acc_start = score.get('accuracy_start', 0)
+            acc_end = score.get('accuracy_end', 0)
+            print(f"   {attr}: {score['leakage']:.4f} (acc: {acc_start:.3f} → {acc_end:.3f})")
 
     print("\n2. MONOTONIC AUC PROGRESS:")
     for attr, frac in monotonic_frac.items():
