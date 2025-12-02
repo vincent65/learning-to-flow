@@ -178,24 +178,50 @@ def main():
             json.dump({'curves': auc_curves, 'monotonic': monotonic_frac}, f)
 
     # 4. Field Diagnostics
-    print("[4/6] Computing field diagnostics...")
-    grid_size = min(200, len(original_embeddings))  # Don't exceed available samples
-    field_stats = compute_field_diagnostics(model, original_embeddings, original_attributes, args.device, grid_size=grid_size)
+    field_cache = os.path.join(cache_dir, 'field_stats.json')
+    if os.path.exists(field_cache):
+        print("[4/6] ✓ Loading cached field diagnostics...")
+        with open(field_cache) as f:
+            field_stats = json.load(f)
+    else:
+        print("[4/6] Computing field diagnostics...")
+        grid_size = min(200, len(original_embeddings))  # Don't exceed available samples
+        field_stats = compute_field_diagnostics(model, original_embeddings, original_attributes, args.device, grid_size=grid_size)
+        with open(field_cache, 'w') as f:
+            json.dump(field_stats, f)
 
-    # 5. Nearest Neighbor Flipbook
-    print("[5/6] Computing nearest-neighbor flipbook data...")
-    flipbook = compute_nearest_neighbor_flipbook(
-        trajectories, train_embeddings, original_attributes, target_attributes, num_paths=50, k=1
-    )
+    # 5. Nearest Neighbor Flipbook (VERY SLOW - can take 15+ minutes)
+    flipbook_cache = os.path.join(cache_dir, 'flipbook_data.json')
+    if os.path.exists(flipbook_cache):
+        print("[5/6] ✓ Loading cached flipbook data...")
+        with open(flipbook_cache) as f:
+            flipbook = json.load(f)
+    else:
+        print("[5/6] Computing nearest-neighbor flipbook data (this may take 15+ minutes)...")
+        flipbook = compute_nearest_neighbor_flipbook(
+            trajectories, train_embeddings, original_attributes, target_attributes, num_paths=50, k=1
+        )
+        with open(flipbook_cache, 'w') as f:
+            json.dump(flipbook, f)
 
     # 6. Method Comparison
-    print("[6/6] Evaluating methods...")
-    attr_specific_metrics = evaluate_method(
-        original_embeddings, trajectories, original_attributes, target_attributes, "AttrSpecific"
-    )
-    linear_metrics = evaluate_method(
-        original_embeddings, z_linear_steered.unsqueeze(1), original_attributes, target_attributes, "Linear"
-    )
+    metrics_cache = os.path.join(cache_dir, 'method_metrics.json')
+    if os.path.exists(metrics_cache):
+        print("[6/6] ✓ Loading cached method comparison...")
+        with open(metrics_cache) as f:
+            metrics_data = json.load(f)
+            attr_specific_metrics = metrics_data['attr_specific']
+            linear_metrics = metrics_data['linear']
+    else:
+        print("[6/6] Evaluating methods...")
+        attr_specific_metrics = evaluate_method(
+            original_embeddings, trajectories, original_attributes, target_attributes, "AttrSpecific"
+        )
+        linear_metrics = evaluate_method(
+            original_embeddings, z_linear_steered.unsqueeze(1), original_attributes, target_attributes, "Linear"
+        )
+        with open(metrics_cache, 'w') as f:
+            json.dump({'attr_specific': attr_specific_metrics, 'linear': linear_metrics}, f)
 
     # Compile results
     results = {
